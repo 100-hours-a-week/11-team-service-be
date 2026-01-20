@@ -1,15 +1,18 @@
 package com.thunder11.fitline_be.common.exception;
 
-import com.thunder11.fitline_be.common.response.ApiResponse;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import jakarta.validation.ConstraintViolationException;
+
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import com.thunder11.fitline_be.common.response.ApiResponse;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -59,6 +62,19 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Object>> handleHttpMessageNotReadableException(HttpMessageNotReadableException e) {
+        ErrorCode ec = ErrorCode.VALIDATION_FAILED;
+
+        return ResponseEntity.status(ec.getStatus())
+                .body(ApiResponse.of(
+                        ec.getStatus().value(),
+                        ec.getCode(),
+                        "JSON 형식이 올바르지 않습니다.",
+                        null
+                ));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Object>> handleException(Exception e) {
         ErrorCode ec = ErrorCode.INTERNAL_ERROR;
@@ -70,5 +86,5 @@ public class GlobalExceptionHandler {
                         ec.getMessage(),
                         null
                 ));
-        }
+    }
 }
