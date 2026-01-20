@@ -1,0 +1,140 @@
+name: Backend CD
+
+on:
+  workflow_run:
+    workflows: ["Backend CI"]
+    types: [completed]
+    branches: [develop]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Download artifact from CI
+        uses: actions/download-artifact@v4
+        with:
+          name: verified-be-jar
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: ./artifact
+
+      - name: Get timestamp (UTC)
+        id: timestamp
+        run: echo "timestamp=$(date -u +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+
+      - name: Rename jar file
+        working-directory: ./artifact
+        run: |
+          JAR_FILE=$(ls -t *.jar | head -n 1)
+          mv "$JAR_FILE" "app-${{ steps.timestamp.outputs.timestamp }}.jar"
+
+      - name: Deploy to Dev Server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.DEV_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          source: "artifact/app-${{ steps.timestamp.outputs.timestamp }}.jar"
+          target: "/home/ubuntu/backend"
+          strip_components: 1
+
+      - name: Execute deployment script
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.DEV_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          script: |
+            cd /home/ubuntu/backend
+
+            NEW_JAR="app-${{ steps.timestamp.outputs.timestamp }}.jar"
+
+            # 이전 버전 백업 (롤백용) - 새 jar 제외
+            PREVIOUS_JAR=$(ls -t app-*.jar 2>/dev/null | grep -v "^$NEW_JAR$" | head -n 1)
+            echo "PREVIOUS_JAR=$PREVIOUS_JAR" > .deploy_info
+
+            # 기존 프로세스 종료
+            pkill -f "app-.*\.jar" || true
+            echo "기존 프로세스 종료 완료"
+            sleep 3
+
+            # 새 버전 실행
+            nohup java -jar "$NEW_JAR" > backend.log 2>&1 &
+            echo "새 버전 실행: $NEW_JAR"
+
+      - name: Health Check
+        id: health_check
+        uses: appleboy/ssh-action@master
+        continue-on-error: true
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.DEV_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          script: |
+            echo "Health Check 시작 (30초 대기)..."
+            sleep 30
+
+            # 3회 재시도 (10초 간격)
+            for i in 1 2 3; do
+              echo "Health Check 시도 $i/3"
+              if curl -sf http://localhost:8080/api/health > /dev/null; then
+                echo "Health Check 성공"
+                exit 0
+              fi
+              sleep 10
+            done
+
+            echo "Health Check 실패"
+            exit 1
+
+      - name: Rollback on failure
+        if: steps.health_check.outcome == 'failure'
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DEV_HOST }}
+          username: ${{ secrets.DEV_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          script: |
+            cd /home/ubuntu/backend
+
+            # 현재 프로세스 종료
+            pkill -f "app-.*\.jar" || true
+            sleep 3
+
+            # 이전 버전으로 롤백
+            source .deploy_info
+            if [ -n "$PREVIOUS_JAR" ] && [ -f "$PREVIOUS_JAR" ]; then
+              nohup java -jar "$PREVIOUS_JAR" > backend.log 2>&1 &
+              echo "롤백 완료: $PREVIOUS_JAR"
+            else
+              echo "롤백 실패: 이전 버전 없음"
+              exit 1
+            fi
+
+      - name: Notify Discord - Success
+        if: steps.health_check.outcome == 'success'
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          status: success
+          title: "🚀 백엔드 배포 성공"
+          description: "app-${{ steps.timestamp.outputs.timestamp }}.jar"
+
+      - name: Notify Discord - Failure
+        if: steps.health_check.outcome == 'failure'
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          status: failure
+          title: "🚨 백엔드 배포 실패"
+          description: "app-${{ steps.timestamp.outputs.timestamp }}.jar 배포 실패"
+
+      - name: Fail workflow if health check failed
+        if: steps.health_check.outcome == 'failure'
+        run: exit 1
