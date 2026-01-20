@@ -1,13 +1,13 @@
-package com.thunder11.fitline_be;
+package com.thunder11.scuad;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class FitlineBeApplication {
+public class ScuadApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(FitlineBeApplication.class, args);
+		SpringApplication.run(ScuadApplication.class, args);
 	}
 
 }

@@ -1,4 +1,4 @@
-package com.thunder11.fitline_be.common.response;
+package com.thunder11.scuad.common.response;
 
 import lombok.Getter;
 

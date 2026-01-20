@@ -1,10 +1,10 @@
-package com.thunder11.fitline_be;
+package com.thunder11.scuad.scuad;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class FitlineBeApplicationTests {
+class ScuadApplicationTests {
 
 	@Test
 	void contextLoads() {
