@@ -1,4 +1,4 @@
-package com.thunder11.scuad;
+package com.thunder11.scuad.scuad;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

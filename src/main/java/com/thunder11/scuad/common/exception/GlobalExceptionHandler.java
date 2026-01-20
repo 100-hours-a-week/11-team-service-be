@@ -1,4 +1,4 @@
-package com.thunder11.fitline_be.common.exception;
+package com.thunder11.scuad.common.exception;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -12,7 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import com.thunder11.fitline_be.common.response.ApiResponse;
+import com.thunder11.scuad.common.response.ApiResponse;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {

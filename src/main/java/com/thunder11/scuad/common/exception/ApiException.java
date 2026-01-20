@@ -1,4 +1,4 @@
-package com.thunder11.fitline_be.common.exception;
+package com.thunder11.scuad.common.exception;
 
 import lombok.Getter;
 
