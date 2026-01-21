@@ -82,11 +82,18 @@ jobs:
           distribution: "temurin"
           java-version: "21"
           cache: gradle
+      
+      - name: Cache SonarQube packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
 
       - name: Sonar Cloud scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: ./gradlew sonar
+        run: ./gradlew build sonar --info
 
   # ----------------------------
   # 4. Artifacts (develop)
