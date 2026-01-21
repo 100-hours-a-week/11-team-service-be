@@ -1,8 +1,10 @@
 name: Backend CI
 
 on:
+  push:
+    branches: [ fix/cd-plain-jar-issue ]
   pull_request:
-    branches: [ develop, main, fix/cd-plain-jar-issue ]
+    branches: [ develop, main ]
     types: [ opened, synchronize, reopened ]
 
 permissions:
