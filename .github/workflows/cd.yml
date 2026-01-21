@@ -3,11 +3,11 @@ name: Backend CD
 on:
   workflow_run:
     workflows: ["Backend CI"]
-    types: [completed]
+    types: [completed] # ci 완료가 되었을 때 cd
     branches: [main]
 
 permissions:
-  id-token: write  # AWS OIDC 인증에 필요
+  id-token: write # AWS OIDC 인증에 필요
   contents: read
   actions: read
 
