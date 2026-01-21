@@ -5,6 +5,10 @@ on:
     branches: [ develop, main ]
     types: [ opened, synchronize, reopened ]
 
+permissions:
+  id-token: write      # required to get OIDC token
+  contents: read       # required to check out repository content
+
 jobs:
   # ----------------------------
   # 1. Build (테스트 제외)
@@ -43,7 +47,6 @@ jobs:
     name: Test (unit/integration)
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ github.base_ref != 'main' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -58,11 +61,18 @@ jobs:
           java-version: "21"
           cache: gradle
 
-      - name: Tests + JaCoCo (develop)
+      - name: test (develop)
         if: ${{ github.base_ref == 'develop' }}
         env:
-          COVERAGE_MIN: "0.0"
-        run: ./gradlew test integrationTest jacocoTestReport jacocoTestCoverageVerification -PCOVERAGE_MIN=${{ env.COVERAGE_MIN }}
+          SPRING_PROFILES_ACTIVE: ${{ vars.SPRING_PROFILES_ACTIVE_TEST }}
+        run: ./gradlew test 
+
+      - name: Integration test + JaCoCo (main)
+        if: ${{ github.base_ref == 'main' }}
+        env:
+          COVERAGE_MIN: ${{ vars.COVERAGE_MIN }}
+          SPRING_PROFILES_ACTIVE: ${{ vars.SPRING_PROFILES_ACTIVE_TEST }}
+        run: ./gradlew integrationTest jacocoTestReport jacocoTestCoverageVerification -PCOVERAGE_MIN=${{ env.COVERAGE_MIN }}
 
   # ----------------------------
   # 3. Static Analysis
@@ -82,11 +92,18 @@ jobs:
           distribution: "temurin"
           java-version: "21"
           cache: gradle
+      
+      - name: Cache SonarQube packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
 
       - name: Sonar Cloud scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: ./gradlew sonar
+        run: ./gradlew build -x test sonar --info
 
   # ----------------------------
   # 4. Artifacts (develop)
