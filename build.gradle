@@ -58,12 +58,6 @@ tasks.register('integrationTest', Test) {
 	useJUnitPlatform()
 }
 
-tasks.register('integrationTest', Test) {
-    description = 'Runs integration tests'
-    group = 'verification'
-	useJUnitPlatform()
-}
-
 tasks.named('test') {
 	useJUnitPlatform()
 }
