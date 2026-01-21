@@ -2,7 +2,7 @@ name: Backend CI
 
 on:
   pull_request:
-    branches: [ develop, main ]
+    branches: [ develop, main, fix/cd-plain-jar-issue ]
     types: [ opened, synchronize, reopened ]
 
 permissions:
