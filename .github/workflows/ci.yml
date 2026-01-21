@@ -64,14 +64,14 @@ jobs:
       - name: test (develop)
         if: ${{ github.base_ref == 'develop' }}
         env:
-          SPRING_PROFILES_ACTIVE: test
+          SPRING_PROFILES_ACTIVE: ${{ vars.SPRING_PROFILES_ACTIVE_TEST }}
         run: ./gradlew test 
 
       - name: Integration test + JaCoCo (main)
         if: ${{ github.base_ref == 'main' }}
         env:
-          COVERAGE_MIN: "0.0"
-          SPRING_PROFILES_ACTIVE: test
+          COVERAGE_MIN: ${{ vars.COVERAGE_MIN }}
+          SPRING_PROFILES_ACTIVE: ${{ vars.SPRING_PROFILES_ACTIVE_TEST }}
         run: ./gradlew integrationTest jacocoTestReport jacocoTestCoverageVerification -PCOVERAGE_MIN=${{ env.COVERAGE_MIN }}
 
   # ----------------------------
