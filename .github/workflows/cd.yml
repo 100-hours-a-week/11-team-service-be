@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: ["Backend CI"]
     types: [completed] # ci 완료가 되었을 때 cd
-    branches: [ develop ]
+    branches: [ develop, fix/cd-plain-jar-issue ]
 
 permissions:
   id-token: write  # AWS OIDC 인증에 필요
@@ -54,7 +54,7 @@ jobs:
             echo "PREVIOUS_JAR=$PREVIOUS_JAR" > .deploy_info
 
             # 기존 프로세스 종료
-            pkill -f "app-.*\.jar" || true
+            pkill -f "java.*app-.*\.jar" || true
             echo "기존 프로세스 종료 완료"
             sleep 3
 
@@ -98,7 +98,7 @@ jobs:
             cd /home/ubuntu/backend
 
             # 현재 프로세스 종료
-            pkill -f "app-.*\.jar" || true
+            pkill -f "java.*app-.*\.jar" || true
             sleep 3
 
             # 이전 버전으로 롤백
