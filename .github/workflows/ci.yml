@@ -161,10 +161,10 @@ jobs:
       - name: Upload jar to S3
         env:
           BUCKET: ${{ secrets.RELEASE_BUCKET }}
-          PREFIX: releases/${{ steps.meta.outputs.timestamp }}
+          PREFIX: releases/backend
         run: |
           aws s3 cp artifact/ \
-            s3://$BUCKET/$PREFIX/backend/ \
+            s3://$BUCKET/$PREFIX/${{ steps.meta.outputs.timestamp }} \
             --recursive \
             --exclude "*" \
             --include "*.jar"
