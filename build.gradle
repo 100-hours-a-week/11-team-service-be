@@ -50,3 +50,8 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+tasks.register('integrationTest', Test) {
+    description = 'Runs integration tests'
+    group = 'verification'
+}
