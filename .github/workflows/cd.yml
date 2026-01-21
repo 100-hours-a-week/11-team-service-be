@@ -3,7 +3,7 @@ name: Backend CD
 on:
   workflow_run:
     workflows: ["Backend CI"]
-    types: [completed] # ci 완료가 되었을 때 cd
+    types: [completed]
     branches: [ develop ]
 
 permissions:
