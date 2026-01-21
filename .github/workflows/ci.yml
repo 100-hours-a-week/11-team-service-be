@@ -5,6 +5,10 @@ on:
     branches: [ develop, main ]
     types: [ opened, synchronize, reopened ]
 
+permissions:
+  id-token: write      # required to get OIDC token
+  contents: read       # required to check out repository content
+
 jobs:
   # ----------------------------
   # 1. Build (테스트 제외)
