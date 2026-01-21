@@ -3,6 +3,7 @@ plugins {
 	id 'org.springframework.boot' version '3.5.9'
 	id 'io.spring.dependency-management' version '1.1.7'
 	id "org.sonarqube" version "7.2.2.6593"
+	id 'jacoco'
 }
 
 sonar {
@@ -10,6 +11,10 @@ sonar {
     property "sonar.projectKey", "100-hours-a-week-11team-be"
     property "sonar.organization", "100-hours-a-week"
   }
+}
+
+jacoco {
+    toolVersion = "0.8.12"
 }
 
 group = 'com.thunder11'
@@ -48,9 +53,19 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	finalizedBy tasks.named('jacocoTestReport')
 }
 
 tasks.register('integrationTest', Test) {
     description = 'Runs integration tests'
     group = 'verification'
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        html.required = true
+        xml.required = true
+        csv.required = false
+    }
 }
