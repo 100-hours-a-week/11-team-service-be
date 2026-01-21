@@ -38,14 +38,15 @@ jobs:
             LATEST_VERSION=$(aws s3 ls s3://$RELEASE_BUCKET/releases/backend/ | sort | tail -1 | awk '{print $2}' | tr -d '/')
             echo "최신 버전: $LATEST_VERSION"
 
-            # S3에서 jar 다운로드
+            # S3에서 jar 다운로드 (plain.jar 제외)
             NEW_JAR="app-$TIMESTAMP.jar"
-            aws s3 cp s3://$RELEASE_BUCKET/releases/backend/$LATEST_VERSION/ ./ --recursive --exclude "*" --include "*.jar"
+            aws s3 cp s3://$RELEASE_BUCKET/releases/backend/$LATEST_VERSION/ ./ --recursive --exclude "*" --include "*.jar" --exclude "*-plain.jar"
 
-            # 다운로드한 jar 파일 이름 변경
-            DOWNLOADED_JAR=$(ls -t *.jar 2>/dev/null | grep -v "^app-" | head -n 1)
+            # 다운로드한 jar 파일 이름 변경 (plain 제외)
+            DOWNLOADED_JAR=$(ls -t *.jar 2>/dev/null | grep -v "^app-" | grep -v "plain" | head -n 1)
             if [ -n "$DOWNLOADED_JAR" ]; then
               mv "$DOWNLOADED_JAR" "$NEW_JAR"
+              echo "Renamed $DOWNLOADED_JAR to $NEW_JAR"
             fi
 
             # 이전 버전 백업 (롤백용) - 새 jar 제외
