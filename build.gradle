@@ -49,6 +49,7 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testImplementation 'com.h2database:h2'
 }
 
 tasks.register('integrationTest', Test) {
@@ -59,11 +60,6 @@ tasks.register('integrationTest', Test) {
 
 tasks.named('test') {
 	useJUnitPlatform()
-}
-
-tasks.named('integrationTest') {
-    useJUnitPlatform()
-    finalizedBy tasks.named('jacocoTestReport')
 }
 
 jacocoTestReport {
