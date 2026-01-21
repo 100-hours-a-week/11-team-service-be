@@ -23,6 +23,7 @@ import lombok.NoArgsConstructor;
 @SQLRestriction("deleted_at IS NULL")
 @EntityListeners(AuditingEntityListener.class)
 public class JobMasterSkill {
+
     @EmbeddedId
     private JobMasterSkillId id;
 

@@ -15,6 +15,7 @@ import lombok.NoArgsConstructor;
 @EqualsAndHashCode
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class JobMasterSkillId implements Serializable {
+
     @Column(name = "job_master_id")
     private Long jobMasterId;
 

@@ -19,6 +19,7 @@ import lombok.NoArgsConstructor;
 @SQLDelete(sql = "UPDATE skill_aliases SET deleted_at = CURRENT_TIMESTAMP WHERE alias_id = ?")
 @SQLRestriction("deleted_at IS NULL")
 public class SkillAlias extends BaseTimeEntity {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "alias_id")

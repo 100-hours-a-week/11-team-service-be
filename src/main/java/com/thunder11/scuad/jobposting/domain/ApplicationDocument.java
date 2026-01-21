@@ -23,6 +23,7 @@ import lombok.NoArgsConstructor;
 @SQLDelete(sql = "UPDATE application_documents SET deleted_at = CURRENT_TIMESTAMP WHERE application_document_id = ?")
 @SQLRestriction("deleted_at IS NULL")
 public class ApplicationDocument extends BaseTimeEntity {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "application_document_id")
