@@ -26,11 +26,15 @@ jobs:
         env:
           RELEASE_BUCKET: ${{ secrets.RELEASE_BUCKET }}
           TIMESTAMP: ${{ steps.timestamp.outputs.timestamp }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_SCHEMA: ${{ secrets.DB_SCHEMA }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         with:
           host: ${{ secrets.DEV_HOST }}
           username: ${{ secrets.DEV_USER }}
           key: ${{ secrets.DEV_SSH_KEY }}
-          envs: RELEASE_BUCKET,TIMESTAMP
+          envs: RELEASE_BUCKET,TIMESTAMP,DB_PORT,DB_SCHEMA,DB_USER,DB_PASSWORD
           script: |
             cd /home/ubuntu/backend
 
@@ -53,14 +57,22 @@ jobs:
             PREVIOUS_JAR=$(ls -t app-*.jar 2>/dev/null | grep -v "^$NEW_JAR$" | head -n 1)
             echo "PREVIOUS_JAR=$PREVIOUS_JAR" > .deploy_info
 
-            # 기존 프로세스 종료
-            pkill -f "app-.*\.jar" || true
-            echo "기존 프로세스 종료 완료"
-            sleep 3
+            # 기존 프로세스 종료 (PID 파일 사용)
+            if [ -f backend.pid ]; then
+              OLD_PID=$(cat backend.pid)
+              if ps -p $OLD_PID > /dev/null 2>&1; then
+                kill $OLD_PID || true
+                echo "기존 프로세스 종료: PID $OLD_PID"
+                sleep 3
+              fi
+              rm -f backend.pid
+            fi
 
             # 새 버전 실행
-            nohup java -jar "$NEW_JAR" > backend.log 2>&1 &
-            echo "새 버전 실행: $NEW_JAR"
+            DB_PORT=$DB_PORT DB_SCHEMA=$DB_SCHEMA DB_USER=$DB_USER DB_PASSWORD=$DB_PASSWORD \
+              nohup java -jar "$NEW_JAR" > backend.log 2>&1 &
+            echo $! > backend.pid
+            echo "새 버전 실행: $NEW_JAR (PID: $(cat backend.pid))"
 
       - name: Health Check
         id: health_check
@@ -90,22 +102,36 @@ jobs:
       - name: Rollback on failure
         if: steps.health_check.outcome == 'failure'
         uses: appleboy/ssh-action@master
+        env:
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_SCHEMA: ${{ secrets.DB_SCHEMA }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         with:
           host: ${{ secrets.DEV_HOST }}
           username: ${{ secrets.DEV_USER }}
           key: ${{ secrets.DEV_SSH_KEY }}
+          envs: DB_PORT,DB_SCHEMA,DB_USER,DB_PASSWORD
           script: |
             cd /home/ubuntu/backend
 
-            # 현재 프로세스 종료
-            pkill -f "app-.*\.jar" || true
-            sleep 3
+            # 현재 프로세스 종료 (PID 파일 사용)
+            if [ -f backend.pid ]; then
+              OLD_PID=$(cat backend.pid)
+              if ps -p $OLD_PID > /dev/null 2>&1; then
+                kill $OLD_PID || true
+                sleep 3
+              fi
+              rm -f backend.pid
+            fi
 
             # 이전 버전으로 롤백
             source .deploy_info
             if [ -n "$PREVIOUS_JAR" ] && [ -f "$PREVIOUS_JAR" ]; then
-              nohup java -jar "$PREVIOUS_JAR" > backend.log 2>&1 &
-              echo "롤백 완료: $PREVIOUS_JAR"
+              DB_PORT=$DB_PORT DB_SCHEMA=$DB_SCHEMA DB_USER=$DB_USER DB_PASSWORD=$DB_PASSWORD \
+                nohup java -jar "$PREVIOUS_JAR" > backend.log 2>&1 &
+              echo $! > backend.pid
+              echo "롤백 완료: $PREVIOUS_JAR (PID: $(cat backend.pid))"
             else
               echo "롤백 실패: 이전 버전 없음"
               exit 1
