@@ -190,11 +190,15 @@ jobs:
         env:
           RELEASE_BUCKET: ${{ secrets.RELEASE_BUCKET }}
           TIMESTAMP: ${{ steps.timestamp.outputs.timestamp }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_SCHEMA: ${{ secrets.DB_SCHEMA }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         with:
           host: ${{ secrets.DEV_HOST }}
           username: ${{ secrets.DEV_USER }}
           key: ${{ secrets.DEV_SSH_KEY }}
-          envs: RELEASE_BUCKET,TIMESTAMP
+          envs: RELEASE_BUCKET,TIMESTAMP,DB_PORT,DB_SCHEMA,DB_USER,DB_PASSWORD
           script: |
             cd /home/ubuntu/backend
 
@@ -229,7 +233,8 @@ jobs:
             fi
 
             # 새 버전 실행
-            nohup java -jar "$NEW_JAR" > backend.log 2>&1 &
+            DB_PORT=$DB_PORT DB_SCHEMA=$DB_SCHEMA DB_USER=$DB_USER DB_PASSWORD=$DB_PASSWORD \
+              nohup java -jar "$NEW_JAR" > backend.log 2>&1 &
             echo $! > backend.pid
             echo "새 버전 실행: $NEW_JAR (PID: $(cat backend.pid))"
 
@@ -261,10 +266,16 @@ jobs:
       - name: Rollback on failure
         if: steps.health_check.outcome == 'failure'
         uses: appleboy/ssh-action@master
+        env:
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_SCHEMA: ${{ secrets.DB_SCHEMA }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         with:
           host: ${{ secrets.DEV_HOST }}
           username: ${{ secrets.DEV_USER }}
           key: ${{ secrets.DEV_SSH_KEY }}
+          envs: DB_PORT,DB_SCHEMA,DB_USER,DB_PASSWORD
           script: |
             cd /home/ubuntu/backend
 
@@ -281,7 +292,8 @@ jobs:
             # 이전 버전으로 롤백
             source .deploy_info
             if [ -n "$PREVIOUS_JAR" ] && [ -f "$PREVIOUS_JAR" ]; then
-              nohup java -jar "$PREVIOUS_JAR" > backend.log 2>&1 &
+              DB_PORT=$DB_PORT DB_SCHEMA=$DB_SCHEMA DB_USER=$DB_USER DB_PASSWORD=$DB_PASSWORD \
+                nohup java -jar "$PREVIOUS_JAR" > backend.log 2>&1 &
               echo $! > backend.pid
               echo "롤백 완료: $PREVIOUS_JAR (PID: $(cat backend.pid))"
             else
