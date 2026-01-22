@@ -2,12 +2,13 @@ name: Backend CI
 
 on:
   pull_request:
-    branches: [ develop, main ]
-    types: [ opened, synchronize, reopened ]
+    branches: [develop, main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
-  id-token: write      # required to get OIDC token
-  contents: read       # required to check out repository content
+  id-token: write # required to get OIDC token
+  contents: read # required to check out repository content
 
 jobs:
   # ----------------------------
@@ -65,7 +66,7 @@ jobs:
         if: ${{ github.base_ref == 'develop' }}
         env:
           SPRING_PROFILES_ACTIVE: ${{ vars.SPRING_PROFILES_ACTIVE_TEST }}
-        run: ./gradlew test 
+        run: ./gradlew test
 
       - name: Integration test + JaCoCo (main)
         if: ${{ github.base_ref == 'main' }}
@@ -92,7 +93,7 @@ jobs:
           distribution: "temurin"
           java-version: "21"
           cache: gradle
-      
+
       - name: Cache SonarQube packages
         uses: actions/cache@v4
         with:
