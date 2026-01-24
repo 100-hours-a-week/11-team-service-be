@@ -6,9 +6,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import com.thunder11.scuad.common.entity.BaseTimeEntity;
-import com.thunder11.scuad.jobposting.domain.type.JobStatus;
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.SQLDelete;
@@ -21,15 +32,27 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import com.thunder11.scuad.common.entity.BaseTimeEntity;
+import com.thunder11.scuad.jobposting.domain.type.JobStatus;
+
 @Entity
 @Getter
 @Builder
-@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(name = "job_masters", indexes = {
-        @Index(name = "idx_job_masters_open_enddate", columnList = "status, end_date, job_master_id, company_id, job_title, start_date"),
-        @Index(name = "idx_job_masters_company_open_enddate", columnList = "company_id, status, end_date, job_master_id, job_title, start_date")
-})
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Table(
+        name = "job_masters",
+        indexes = {
+                @Index(
+                        name = "idx_job_masters_open_enddate",
+                        columnList = "status, end_date, job_master_id, company_id, job_title, start_date"
+                ),
+                @Index(
+                        name = "idx_job_masters_company_open_enddate",
+                        columnList = "company_id, status, end_date, job_master_id, job_title, start_date"
+                )
+        }
+)
 @SQLDelete(sql = "UPDATE job_masters SET deleted_at = CURRENT_TIMESTAMP WHERE job_master_id = ?")
 @SQLRestriction("deleted_at IS NULL")
 public class JobMaster extends BaseTimeEntity {
@@ -71,7 +94,7 @@ public class JobMaster extends BaseTimeEntity {
     private LocalDateTime lastSeenAt;
 
     @Builder.Default
-    @OneToMany(mappedBy = "jobMaster")
+    @OneToMany(mappedBy = "jobMaster", cascade = CascadeType.ALL)
     private List<JobPost> jobPosts = new ArrayList<>();
 
     @Builder.Default

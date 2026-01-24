@@ -4,11 +4,18 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import com.thunder11.scuad.common.entity.BaseTimeEntity;
-import com.thunder11.scuad.jobposting.domain.type.JobSourceType;
-import com.thunder11.scuad.jobposting.domain.type.RecruitmentStatus;
-import com.thunder11.scuad.jobposting.domain.type.RegistrationStatus;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.SQLDelete;
@@ -16,15 +23,27 @@ import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.type.SqlTypes;
 
 import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import com.thunder11.scuad.common.entity.BaseTimeEntity;
+import com.thunder11.scuad.jobposting.domain.type.JobSourceType;
+import com.thunder11.scuad.jobposting.domain.type.RecruitmentStatus;
+import com.thunder11.scuad.jobposting.domain.type.RegistrationStatus;
+
 @Entity
 @Getter
+@Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(name = "job_posts", indexes = {
-        @Index(name = "idx_job_posts_job_master_id", columnList = "job_master_id")
-})
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Table(
+        name = "job_posts",
+        indexes = {
+                @Index(name = "idx_job_posts_job_master_id", columnList = "job_master_id")
+        }
+)
 @SQLDelete(sql = "UPDATE job_posts SET deleted_at = CURRENT_TIMESTAMP WHERE job_post_id = ?")
 @SQLRestriction("deleted_at IS NULL")
 public class JobPost extends BaseTimeEntity {
