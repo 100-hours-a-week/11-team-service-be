@@ -8,6 +8,8 @@ import com.thunder11.scuad.jobposting.domain.JobPost;
 
 public interface JobPostRepository extends JpaRepository<JobPost, Long> {
 
+    Optional<JobPost> findByIdAndDeletedAtIsNull(Long id);
+
     Optional<JobPost> findBySourceUrlHashAndDeletedAtIsNull(String sourceUrlHash);
 
     Optional<JobPost> findByFingerprintHashAndDeletedAtIsNull(String fingerprintHash);
