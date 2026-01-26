@@ -67,6 +67,7 @@ jobs:
           name: ${{ steps.build.outputs.jar_name }}
           path: ${{ steps.build.outputs.jar_path }}
           retention-days: 1
+          overwrite: true
 
   # ----------------------------
   # 2. Test
