@@ -22,7 +22,7 @@ public interface JobPostRepository extends JpaRepository<JobPost, Long> {
 
     boolean existsByFingerprintHashAndDeletedAtIsNull(String fingerprintHash);
 
-    boolean existsByJobMasterIdAndDeletedAtIsNullAndRegistrationStatus(Long jobMasterId, RegistrationStatus status);
+    boolean existsByJobMasterIdAndDeletedAtIsNull(Long jobMasterId);
 
     @Modifying
     @Query("DELETE FROM JobPost j WHERE j.id = :id")

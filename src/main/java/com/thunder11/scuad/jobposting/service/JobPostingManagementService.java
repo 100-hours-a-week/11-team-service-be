@@ -1,5 +1,6 @@
 package com.thunder11.scuad.jobposting.service;
 
+import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +21,7 @@ public class JobPostingManagementService {
 
     private final JobPostRepository jobPostRepository;
     private final AiServiceClient aiServiceClient;
+    private final JobMasterRepository jobMasterRepository;
 
     @Transactional
     public JobPostingConfirmResponse confirmJobPosting(Long jobPostingId, Long userId, RegistrationStatus status) {
@@ -60,12 +62,12 @@ public class JobPostingManagementService {
 
         jobPostRepository.deleteHardById(jobPostingId);
 
-        boolean hasRemainPosts = jobPostRepository.existsByJobMasterIdAndDeletedAtIsNullAndRegistrationStatus(jobMasterId, RegistrationStatus.CONFIRMED);
+        boolean hasRemainPosts = jobPostRepository.existsByJobMasterIdAndDeletedAtIsNull(jobMasterId);
 
         if(!hasRemainPosts) {
-            jobPostRepository.deleteHardById(jobPostingId);
+            jobMasterRepository.deleteHardById(jobMasterId);
         }
 
-        aiServiceClient.deleteJobAnalysis(jobMasterId);
+        aiServiceClient.deleteJobAnalysis(jobPostingId);
     }
 }
