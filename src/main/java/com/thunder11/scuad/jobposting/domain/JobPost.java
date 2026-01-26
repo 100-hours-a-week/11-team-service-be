@@ -106,4 +106,9 @@ public class JobPost extends BaseTimeEntity {
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
+
+    public void confirmRegistration() {
+        this.registrationStatus = RegistrationStatus.CONFIRMED;
+
+    }
 }
