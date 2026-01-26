@@ -2,6 +2,8 @@ name: Backend CI
 
 on:
   workflow_dispatch: # 수동 실행
+  push:
+    branches: [feature/ci-cd] # 테스트용
   pull_request:
     branches: [develop, main]
     types: [opened, synchronize, reopened]
@@ -11,8 +13,8 @@ on:
       - ".git*" # Git 설정 변경 무시
 
 permissions:
-  id-token: write # required to get OIDC token
-  contents: read # required to check out repository content
+  id-token: write # AWS OIDC 인증에 필요
+  contents: read # GitHub 저장소 접근 권한
 
 jobs:
   # ----------------------------
@@ -21,6 +23,10 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    outputs:
+      jar_name: ${{ steps.build.outputs.jar_name }}
+      jar_path: ${{ steps.build.outputs.jar_path }}
+      version: ${{ steps.build.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -36,13 +42,30 @@ jobs:
           cache: gradle
 
       - name: Build (no test)
-        run: ./gradlew build -x test
+        id: build
+        run: |
+          ./gradlew build -x test
+          JAR_PATH=$(ls build/libs/*.jar | grep -v plain)
+          JAR_NAME=$(basename $JAR_PATH)
+          VERSION=$(./gradlew properties -q | grep "^version:" | awk '{print $2}')
+          echo "jar_path=$JAR_PATH" >> $GITHUB_OUTPUT
+          echo "jar_name=$JAR_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Upload jar (temporary for downstream job)
+      - name: Upload jar (develop - 90 days)
+        if: ${{ github.base_ref == 'develop' || github.ref_name == 'feature/ci-cd' }}
         uses: actions/upload-artifact@v4
         with:
-          name:
-          path: build/libs/*.jar
+          name: ${{ steps.build.outputs.jar_name }}
+          path: ${{ steps.build.outputs.jar_path }}
+          retention-days: 90
+
+      - name: Upload jar (main - temporary for S3)
+        if: ${{ github.base_ref == 'main' || github.ref_name == 'feature/ci-cd' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.jar_name }}
+          path: ${{ steps.build.outputs.jar_path }}
           retention-days: 1
 
   # ----------------------------
@@ -67,13 +90,13 @@ jobs:
           cache: gradle
 
       - name: test (develop)
-        if: ${{ github.base_ref == 'develop' }}
+        if: ${{ github.base_ref == 'develop' || github.ref_name == 'feature/ci-cd' }}
         env:
           SPRING_PROFILES_ACTIVE: ${{ vars.SPRING_PROFILES_ACTIVE_TEST }}
         run: ./gradlew test
 
       - name: Integration test + JaCoCo (main)
-        if: ${{ github.base_ref == 'main' }}
+        if: ${{ github.base_ref == 'main' || github.ref_name == 'feature/ci-cd' }}
         env:
           COVERAGE_MIN: ${{ vars.COVERAGE_MIN }}
           SPRING_PROFILES_ACTIVE: ${{ vars.SPRING_PROFILES_ACTIVE_TEST }}
@@ -86,7 +109,7 @@ jobs:
     name: Static Analysis (Sonar Cloud)
     runs-on: ubuntu-latest
     needs: test
-    if: ${{ github.base_ref == 'develop' }}
+    if: ${{ github.base_ref == 'develop' || github.ref_name == 'feature/ci-cd' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -111,47 +134,25 @@ jobs:
         run: ./gradlew build -x test sonar --info
 
   # ----------------------------
-  # 4. Artifacts (develop)
-  # ----------------------------
-  artifacts:
-    name: Upload Verified Artifact (develop)
-    runs-on: ubuntu-latest
-    needs: [build, test, static_analysis]
-    if: ${{ github.base_ref == 'develop' }}
-
-    steps:
-      - name: Download built jar
-        uses: actions/download-artifact@v4
-        with:
-          name: be-jar
-          path: artifact
-
-      - name: Upload jar
-        uses: actions/upload-artifact@v4
-        with:
-          name: verified-be-jar
-          path: artifact/*.jar
-          retention-days: 90
-
-  # ----------------------------
-  # 5. Main → S3 Archive
+  # 4. Main → S3 Archive
   # ----------------------------
   main_archive:
     name: Archive release to S3
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ github.base_ref == 'main' }}
+    if: ${{ github.base_ref == 'main' || github.ref_name == 'feature/ci-cd' }}
 
     steps:
       - name: Set meta
         id: meta
         run: |
-          echo "timestamp=$(date -u +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+          # KST (Asia/Seoul) 기준 타임스탬프 생성
+          echo "timestamp=$(TZ='Asia/Seoul' date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
 
       - name: Download built jar
         uses: actions/download-artifact@v4
         with:
-          name: be-jar
+          name: ${{ needs.build.outputs.jar_name }}
           path: artifact
 
       - name: Configure AWS credentials
@@ -168,8 +169,16 @@ jobs:
           BUCKET: ${{ secrets.RELEASE_BUCKET }}
           PREFIX: releases/backend
         run: |
+          # 타임스탬프 폴더에 저장 (버전 히스토리)
           aws s3 cp artifact/ \
-            s3://$BUCKET/$PREFIX/${{ steps.meta.outputs.timestamp }} \
+            s3://$BUCKET/$PREFIX/${{ needs.build.outputs.version }}/${{ steps.meta.outputs.timestamp }}/ \
+            --recursive \
+            --exclude "*" \
+            --include "*.jar"
+
+          # latest 폴더에 덮어쓰기 (최신 버전)
+          aws s3 cp artifact/ \
+            s3://$BUCKET/$PREFIX/latest/ \
             --recursive \
             --exclude "*" \
             --include "*.jar"
