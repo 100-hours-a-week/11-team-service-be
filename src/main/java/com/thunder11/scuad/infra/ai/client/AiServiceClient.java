@@ -1,15 +1,16 @@
 package com.thunder11.scuad.infra.ai.client;
 
-import com.thunder11.scuad.common.exception.ApiException;
-import com.thunder11.scuad.common.exception.ErrorCode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import com.thunder11.scuad.common.exception.ApiException;
+import com.thunder11.scuad.common.exception.ErrorCode;
 import com.thunder11.scuad.infra.ai.dto.request.AiJobAnalysisRequest;
 import com.thunder11.scuad.infra.ai.dto.response.AiApiResponse;
 import com.thunder11.scuad.infra.ai.dto.response.AiJobAnalysisResponse;
@@ -37,6 +38,23 @@ public class AiServiceClient {
         validateAiResponse(response);
 
         return response.getData();
+    }
+
+    @Async
+    public void deleteJobAnalysis(Long jobPostingId) {
+        log.info("AI 분석 데이터 비동기 삭제 요청 시작: ID={}", jobPostingId);
+        try {
+            webClient.delete()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/v1/job-posting/{job_posting_id}")
+                            .build(jobPostingId))
+                    .retrieve()
+                    .toBodilessEntity()
+                    .block();
+            log.info("AI 분석 데이터 삭제 완료: ID={}", jobPostingId);
+        } catch (Exception e) {
+            log.error("AI 분석 데이터 삭제 실패: ID={}", jobPostingId, e.getMessage());
+        }
     }
 
     private void validateAiResponse(AiApiResponse<?> response) {

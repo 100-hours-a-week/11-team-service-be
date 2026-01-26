@@ -11,6 +11,7 @@ import com.thunder11.scuad.jobposting.domain.JobPost;
 import com.thunder11.scuad.jobposting.domain.type.RegistrationStatus;
 import com.thunder11.scuad.jobposting.dto.response.JobPostingConfirmResponse;
 import com.thunder11.scuad.jobposting.repository.JobPostRepository;
+import com.thunder11.scuad.infra.ai.client.AiServiceClient;
 
 @Service
 @RequiredArgsConstructor
@@ -18,6 +19,7 @@ import com.thunder11.scuad.jobposting.repository.JobPostRepository;
 public class JobPostingManagementService {
 
     private final JobPostRepository jobPostRepository;
+    private final AiServiceClient aiServiceClient;
 
     @Transactional
     public JobPostingConfirmResponse confirmJobPosting(Long jobPostingId, Long userId, RegistrationStatus status) {
@@ -43,5 +45,27 @@ public class JobPostingManagementService {
                 jobPost.getJobMaster().getId(),
                 jobPost.getRegistrationStatus()
         );
+    }
+
+    @Transactional
+    public void deleteJobPosting(Long jobPostingId, Long userId) {
+        JobPost jobPost = jobPostRepository.findByIdAndDeletedAtIsNull(jobPostingId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+
+        if(!jobPost.getCreatedBy().equals(userId)) {
+            throw new ApiException(ErrorCode.FORBIDDEN);
+        }
+
+        Long jobMasterId = jobPost.getJobMaster().getId();
+
+        jobPostRepository.deleteHardById(jobPostingId);
+
+        boolean hasRemainPosts = jobPostRepository.existsByJobMasterIdAndDeletedAtIsNullAndRegistrationStatus(jobMasterId, RegistrationStatus.CONFIRMED);
+
+        if(!hasRemainPosts) {
+            jobPostRepository.deleteHardById(jobPostingId);
+        }
+
+        aiServiceClient.deleteJobAnalysis(jobMasterId);
     }
 }

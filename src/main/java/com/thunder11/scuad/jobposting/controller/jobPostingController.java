@@ -2,8 +2,10 @@ package com.thunder11.scuad.jobposting.controller;
 
 import jakarta.validation.Valid;
 
-import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,8 +47,16 @@ public class jobPostingController {
         JobPostingConfirmResponse result = jobPostingManagementService.confirmJobPosting(jobPostingId, userId, request.getRegistrationStatus());
 
         return ApiResponse.of(200, "JOB_MASTER_REGISTERED","채용공고가 성공적으로 등록되었습니다.", result);
+    }
 
+    @DeleteMapping("/{jobPostingId}")
+    public ResponseEntity<Void> deleteJobPosting(
+            @PathVariable Long jobPostingId,
+            @RequestParam(value = "userId", required = false, defaultValue = "1") Long userId
+    ) {
+        jobPostingManagementService.deleteJobPosting(jobPostingId, userId);
 
-            }
+        return ResponseEntity.noContent().build();
+    }
 
 }
