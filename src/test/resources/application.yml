@@ -5,3 +5,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+
+ai:
+  service:
+    url: http://localhost:8000
