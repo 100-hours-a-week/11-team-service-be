@@ -3,7 +3,7 @@ name: Backend CD
 on:
   workflow_dispatch: # 수동 실행
   push:
-    branches: [develop, main, feature/ci-cd]
+    branches: [develop, main]
     paths-ignore:
       - "**.md"
       - ".github/**"
@@ -21,7 +21,7 @@ jobs:
   deploy_dev:
     name: Deploy to Dev Server
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feature/ci-cd'
+    if: github.ref == 'refs/heads/develop'
 
     steps:
       - name: Configure AWS credentials
