@@ -68,6 +68,6 @@ public class JobPostingManagementService {
             jobMasterRepository.deleteHardById(jobMasterId);
         }
 
-        aiServiceClient.deleteJobAnalysis(jobPostingId);
+        aiServiceClient.deleteJobAnalysis(jobPost.getAiJobId());
     }
 }

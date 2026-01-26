@@ -41,19 +41,17 @@ public class AiServiceClient {
     }
 
     @Async
-    public void deleteJobAnalysis(Long jobPostingId) {
-        log.info("AI 분석 데이터 비동기 삭제 요청 시작: ID={}", jobPostingId);
+    public void deleteJobAnalysis(Long aiJobId) {
+        log.info("AI 분석 데이터 비동기 삭제 요청 시작: ID={}", aiJobId);
         try {
             webClient.delete()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/api/v1/job-posting/{job_posting_id}")
-                            .build(jobPostingId))
+                    .uri(aiServiceUrl + "/api/v1/job-posting/" + aiJobId)
                     .retrieve()
                     .toBodilessEntity()
                     .block();
-            log.info("AI 분석 데이터 삭제 완료: ID={}", jobPostingId);
+            log.info("AI 분석 데이터 삭제 완료: ID={}", aiJobId);
         } catch (Exception e) {
-            log.error("AI 분석 데이터 삭제 실패: ID={}", jobPostingId, e.getMessage());
+            log.error("AI 분석 데이터 삭제 실패: ID={}, 이유={}", aiJobId, e.getMessage());
         }
     }
 
