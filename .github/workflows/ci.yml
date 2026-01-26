@@ -146,6 +146,15 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-northeast-2
 
+      - name: Validate release version
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          if [[ "$VERSION" == *"SNAPSHOT"* ]]; then
+            echo "::error::SNAPSHOT version cannot be released: $VERSION"
+            exit 1
+          fi
+          echo "Release version validated: $VERSION"
+
       - name: Upload release to S3
         env:
           BUCKET: ${{ secrets.RELEASE_BUCKET }}
@@ -154,6 +163,13 @@ jobs:
           # 버전 폴더에 저장 (버전당 하나)
           aws s3 cp artifact/ \
             s3://$BUCKET/$PREFIX/${{ needs.build.outputs.version }}/ \
+            --recursive \
+            --exclude "*" \
+            --include "*.jar"
+
+          # latest 폴더에 덮어쓰기 (최신 릴리즈)
+          aws s3 cp artifact/ \
+            s3://$BUCKET/$PREFIX/latest/ \
             --recursive \
             --exclude "*" \
             --include "*.jar"
@@ -194,6 +210,13 @@ jobs:
           # 타임스탬프 폴더에 저장 (빌드 히스토리)
           aws s3 cp artifact/ \
             s3://$BUCKET/$PREFIX/${{ needs.build.outputs.version }}/${{ steps.meta.outputs.timestamp }}/ \
+            --recursive \
+            --exclude "*" \
+            --include "*.jar"
+
+          # latest 폴더에 덮어쓰기 (최신 스냅샷)
+          aws s3 cp artifact/ \
+            s3://$BUCKET/$PREFIX/latest/ \
             --recursive \
             --exclude "*" \
             --include "*.jar"
