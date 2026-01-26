@@ -135,13 +135,47 @@ jobs:
         run: ./gradlew build -x test sonar --info
 
   # ----------------------------
-  # 4. Main → S3 Archive
+  # 4. Main → S3 Release Archive
   # ----------------------------
-  main_archive:
+  release_archive:
     name: Archive release to S3
     runs-on: ubuntu-latest
     needs: build
     if: ${{ github.base_ref == 'main' || github.ref_name == 'feature/ci-cd' }}
+
+    steps:
+      - name: Download built jar
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.jar_name }}
+          path: artifact
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-northeast-2
+
+      - name: Upload release to S3
+        env:
+          BUCKET: ${{ secrets.RELEASE_BUCKET }}
+          PREFIX: releases/backend
+        run: |
+          # 버전 폴더에 저장 (버전당 하나)
+          aws s3 cp artifact/ \
+            s3://$BUCKET/$PREFIX/${{ needs.build.outputs.version }}/ \
+            --recursive \
+            --exclude "*" \
+            --include "*.jar"
+
+  # ----------------------------
+  # 5. Develop → S3 Snapshot Archive
+  # ----------------------------
+  snapshot_archive:
+    name: Archive snapshot to S3
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.base_ref == 'develop' || github.ref_name == 'feature/ci-cd' }}
 
     steps:
       - name: Set meta
@@ -162,24 +196,14 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-northeast-2
 
-      - name: List artifact
-        run: ls -la artifact && find artifact -maxdepth 2 -type f
-
-      - name: Upload jar to S3
+      - name: Upload snapshot to S3
         env:
           BUCKET: ${{ secrets.RELEASE_BUCKET }}
-          PREFIX: releases/backend
+          PREFIX: snapshots/backend
         run: |
-          # 타임스탬프 폴더에 저장 (버전 히스토리)
+          # 타임스탬프 폴더에 저장 (빌드 히스토리)
           aws s3 cp artifact/ \
             s3://$BUCKET/$PREFIX/${{ needs.build.outputs.version }}/${{ steps.meta.outputs.timestamp }}/ \
-            --recursive \
-            --exclude "*" \
-            --include "*.jar"
-
-          # latest 폴더에 덮어쓰기 (최신 버전)
-          aws s3 cp artifact/ \
-            s3://$BUCKET/$PREFIX/latest/ \
             --recursive \
             --exclude "*" \
             --include "*.jar"
