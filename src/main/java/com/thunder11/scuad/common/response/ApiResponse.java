@@ -4,6 +4,7 @@ import lombok.Getter;
 
 @Getter
 public class ApiResponse <T>{
+
     private final int status;
     private final String code;
     private final String message;
