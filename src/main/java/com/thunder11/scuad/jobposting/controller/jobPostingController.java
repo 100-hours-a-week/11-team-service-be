@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +20,7 @@ import com.thunder11.scuad.jobposting.dto.request.JobPostingConfirmRequest;
 import com.thunder11.scuad.jobposting.dto.request.JobUrlAnalysisRequest;
 import com.thunder11.scuad.jobposting.dto.response.JobAnalysisResultResponse;
 import com.thunder11.scuad.jobposting.dto.response.JobPostingConfirmResponse;
+import com.thunder11.scuad.jobposting.dto.response.JobPostingDetailResponse;
 import com.thunder11.scuad.jobposting.service.JobPostingAnalysisService;
 import com.thunder11.scuad.jobposting.service.JobPostingManagementService;
 
@@ -29,6 +31,13 @@ public class jobPostingController {
 
     private final JobPostingAnalysisService jobPostingAnalysisService;
     private final JobPostingManagementService jobPostingManagementService;
+
+    @GetMapping("/{jobPostingId}")
+    public ApiResponse<JobPostingDetailResponse> getJobPosting(@PathVariable long jobPostingId) {
+        JobPostingDetailResponse result = jobPostingManagementService.getJobPostingDetail(jobPostingId);
+
+        return ApiResponse.of(200, "JOB_POST_LOAD_SUCCESS", "공고 분석 결과 조회 성공", result);
+    }
 
     @PostMapping
     public ApiResponse<JobAnalysisResultResponse> analyzeJobPosting(
@@ -58,5 +67,4 @@ public class jobPostingController {
 
         return ResponseEntity.noContent().build();
     }
-
 }

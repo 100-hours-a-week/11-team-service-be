@@ -1,6 +1,6 @@
 package com.thunder11.scuad.jobposting.service;
 
-import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +13,9 @@ import com.thunder11.scuad.jobposting.domain.type.RegistrationStatus;
 import com.thunder11.scuad.jobposting.dto.response.JobPostingConfirmResponse;
 import com.thunder11.scuad.jobposting.repository.JobPostRepository;
 import com.thunder11.scuad.infra.ai.client.AiServiceClient;
+import com.thunder11.scuad.jobposting.domain.JobMaster;
+import com.thunder11.scuad.jobposting.dto.response.JobPostingDetailResponse;
+import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
 
 @Service
 @RequiredArgsConstructor
@@ -23,10 +26,18 @@ public class JobPostingManagementService {
     private final AiServiceClient aiServiceClient;
     private final JobMasterRepository jobMasterRepository;
 
+    @Transactional(readOnly = true)
+    public JobPostingDetailResponse getJobPostingDetail(Long jobMasterId) {
+        JobMaster jobMaster = jobMasterRepository.findByIdWithDetails(jobMasterId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고가 존재하지 않습니다."));
+
+        return JobPostingDetailResponse.from(jobMaster);
+    }
+
     @Transactional
     public JobPostingConfirmResponse confirmJobPosting(Long jobPostingId, Long userId, RegistrationStatus status) {
         JobPost jobPost = jobPostRepository.findByIdAndDeletedAtIsNull(jobPostingId)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고를 조회할 수 없습니다."));
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고가 존재하지 않습니다."));
 
         if(!jobPost.getCreatedBy().equals(userId)) {
             throw new ApiException(ErrorCode.FORBIDDEN);
