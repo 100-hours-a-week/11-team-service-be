@@ -2,13 +2,12 @@ name: Backend CD
 
 on:
   workflow_run:
-    workflows: ["Backend CI"]
-    types: [completed]
-    branches: [develop]
-  workflow_dispatch: # 수동 실행
+    workflows: [ "Backend CI" ]
+    types: [ completed ]
+    branches: [ develop ]
 
 permissions:
-  id-token: write # AWS OIDC 인증에 필요
+  id-token: write  # AWS OIDC 인증에 필요
   contents: read
   actions: read
 
