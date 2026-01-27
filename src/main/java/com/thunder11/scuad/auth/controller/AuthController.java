@@ -4,12 +4,17 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.servlet.view.RedirectView;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.thunder11.scuad.auth.dto.LoginResponse;
 import com.thunder11.scuad.auth.service.AuthService;
+import com.thunder11.scuad.auth.dto.RefreshTokenRequest;
+import com.thunder11.scuad.auth.dto.TokenRefreshResponse;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -61,5 +66,20 @@ public class AuthController {
 
         log.info("로그인 성공, 프론트엔드로 리다이렉트");
         return new RedirectView(frontendUrl);
+    }
+
+    // Access Token 재발급
+    // Refresh Token을 받아서 새로운 Access Token과 Refresh Token 발급
+    @PostMapping("/refresh")
+    public TokenRefreshResponse refreshToken(
+            @Valid @RequestBody RefreshTokenRequest request
+    ) {
+        log.info("토큰 재발급 요청: refreshToken={}", request.getRefreshToken().substring(0, 10) + "...");
+
+        // Refresh Token으로 새 토큰 발급
+        TokenRefreshResponse response = authService.refreshAccessToken(request.getRefreshToken());
+
+        log.info("토큰 재발급 완료");
+        return response;
     }
 }
