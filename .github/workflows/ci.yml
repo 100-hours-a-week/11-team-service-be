@@ -55,7 +55,7 @@ jobs:
           # main 브랜치면 SNAPSHOT 제거
           if [[ "$TARGET_BRANCH" == "main" ]]; then
             VERSION=${RAW_VERSION%-SNAPSHOT}
-            ./gradlew build -x test -Pversion=$VERSION
+            ./gradlew build -x test -PreleaseVersion=$VERSION
           else
             VERSION=$RAW_VERSION
             ./gradlew build -x test
