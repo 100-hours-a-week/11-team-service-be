@@ -11,7 +11,7 @@ import org.springframework.data.repository.query.Param;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.type.JobStatus;
 
-public interface JobMasterRepository extends JpaRepository<JobMaster, Long> {
+public interface JobMasterRepository extends JpaRepository<JobMaster, Long>, JobMasterRepositoryCustom {
 
     List<JobMaster> findByStatusOrderByEndDateAsc(JobStatus status);
 
