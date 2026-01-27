@@ -10,7 +10,7 @@ on:
       - ".git*"
 
 permissions:
-  id-token: write # AWS OIDC 인증에 필요
+  id-token: write  # AWS OIDC 인증에 필요
   contents: read
   actions: read
 
