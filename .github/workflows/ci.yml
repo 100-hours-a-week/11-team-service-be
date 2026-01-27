@@ -182,10 +182,10 @@ jobs:
             --exclude "*" \
             --include "*.jar"
 
-          # latest 폴더에 덮어쓰기 (최신 릴리즈)
-          aws s3 cp artifact/ \
+          # latest 폴더에 덮어쓰기 (최신 릴리즈, 기존 파일 삭제)
+          aws s3 sync artifact/ \
             s3://$BUCKET/$PREFIX/latest/ \
-            --recursive \
+            --delete \
             --exclude "*" \
             --include "*.jar"
 
@@ -229,9 +229,9 @@ jobs:
             --exclude "*" \
             --include "*.jar"
 
-          # latest 폴더에 덮어쓰기 (최신 스냅샷)
-          aws s3 cp artifact/ \
+          # latest 폴더에 덮어쓰기 (최신 스냅샷, 기존 파일 삭제)
+          aws s3 sync artifact/ \
             s3://$BUCKET/$PREFIX/latest/ \
-            --recursive \
+            --delete \
             --exclude "*" \
             --include "*.jar"
