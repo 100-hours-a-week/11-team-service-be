@@ -131,13 +131,25 @@ public class AuthService {
     }
 
     // 고유한 닉네임 생성
-    // 카카오 닉네임이 중복이면 뒤에 숫자 추가
+// 카카오 닉네임이 중복이면 뒤에 숫자 추가
     private String generateUniqueNickname(KakaoUserInfoResponse userInfo) {
-        String baseNickname = userInfo.getKakaoAccount().getProfile().getNickname();
-        
-        // 닉네임이 없으면 기본값
-        if (baseNickname == null || baseNickname.isEmpty()) {
-            baseNickname = "사용자";
+        String baseNickname = "사용자";  // 기본값을 먼저 설정
+
+        // Null-safe 체크: 각 단계마다 null 확인
+        try {
+            if (userInfo != null &&
+                    userInfo.getKakaoAccount() != null &&
+                    userInfo.getKakaoAccount().getProfile() != null) {
+
+                String kakaoNickname = userInfo.getKakaoAccount().getProfile().getNickname();
+
+                // 카카오 닉네임이 있고 비어있지 않으면 사용
+                if (kakaoNickname != null && !kakaoNickname.trim().isEmpty()) {
+                    baseNickname = kakaoNickname;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("카카오 닉네임 추출 실패, 기본값 사용: {}", e.getMessage());
         }
 
         // 중복 체크 및 고유 닉네임 생성
@@ -148,6 +160,7 @@ public class AuthService {
             suffix++;
         }
 
+        log.info("생성된 닉네임: {}", nickname);
         return nickname;
     }
 
