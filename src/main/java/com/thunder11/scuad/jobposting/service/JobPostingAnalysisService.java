@@ -138,6 +138,7 @@ public class JobPostingAnalysisService {
 
         JobPost jobPost = JobPost.builder()
                 .jobMaster(jobMaster)
+                .aiJobId(aiData.getJobPostingId())
                 .company(company)
                 .createdBy(userId)
                 .sourceType(JobSourceType.USER)

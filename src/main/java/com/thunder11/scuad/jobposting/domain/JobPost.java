@@ -57,6 +57,9 @@ public class JobPost extends BaseTimeEntity {
     @JoinColumn(name = "job_master_id", nullable = false)
     private JobMaster jobMaster;
 
+    @Column(name = "ai_job_id")
+    private Long aiJobId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
@@ -103,4 +106,9 @@ public class JobPost extends BaseTimeEntity {
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
+
+    public void confirmRegistration() {
+        this.registrationStatus = RegistrationStatus.CONFIRMED;
+
+    }
 }
