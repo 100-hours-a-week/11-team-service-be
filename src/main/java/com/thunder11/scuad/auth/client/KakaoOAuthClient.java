@@ -39,7 +39,16 @@ public class KakaoOAuthClient {
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add("grant_type", "authorization_code");
         body.add("client_id", kakaoProperties.getClientId());
-        body.add("client_secret", kakaoProperties.getClientSecret());
+
+        // Client Secret이 있을 때만 추가
+        String clientSecret = kakaoProperties.getClientSecret();
+        if (clientSecret != null && !clientSecret.isEmpty()) {
+            body.add("client_secret", clientSecret);
+            log.debug("Client Secret 포함하여 토큰 요청");
+        } else {
+            log.debug("Client Secret 없이 토큰 요청");
+        }
+
         body.add("redirect_uri", kakaoProperties.getRedirectUri());
         body.add("code", code);  // 카카오로부터 받은 인가 코드
 
@@ -81,8 +90,15 @@ public class KakaoOAuthClient {
                     KakaoUserInfoResponse.class
             );
 
-            log.info("카카오 사용자 정보 조회 성공: userId={}", response.getBody().getId());
-            return response.getBody();
+            // 응답 body null 체크
+            KakaoUserInfoResponse userInfo = response.getBody();
+            if (userInfo == null) {
+                log.error("카카오 사용자 정보 응답 body가 null입니다");
+                throw new ApiException(ErrorCode.KAKAO_API_ERROR);
+            }
+
+            log.info("카카오 사용자 정보 조회 성공: userId={}", userInfo.getId());
+            return userInfo;
 
         } catch (RestClientException e) {
             log.error("카카오 사용자 정보 조회 실패: {}", e.getMessage());
