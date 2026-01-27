@@ -1,5 +1,7 @@
 package com.thunder11.scuad.jobposting.controller;
 
+import java.util.Map;
+
 import jakarta.validation.Valid;
 
 import org.springframework.http.ResponseEntity;
@@ -23,6 +25,7 @@ import com.thunder11.scuad.jobposting.dto.response.JobPostingConfirmResponse;
 import com.thunder11.scuad.jobposting.dto.response.JobPostingDetailResponse;
 import com.thunder11.scuad.jobposting.service.JobPostingAnalysisService;
 import com.thunder11.scuad.jobposting.service.JobPostingManagementService;
+import com.thunder11.scuad.jobposting.dto.request.JobPostingSearchCondition;
 
 @RestController
 @RequestMapping("/api/v1/job-postings")
@@ -31,6 +34,14 @@ public class jobPostingController {
 
     private final JobPostingAnalysisService jobPostingAnalysisService;
     private final JobPostingManagementService jobPostingManagementService;
+
+    @GetMapping
+    public ApiResponse<Map<String, Object>> getJobPostings(
+            JobPostingSearchCondition condition
+            ) {
+        Map<String, Object> result = jobPostingManagementService.getJobPostings(condition);
+        return ApiResponse.of(200, "JOB_POST_LIST_LOAD_SUCCESS", "채용공고 목록 조회에 성공했습니다.", result);
+    }
 
     @GetMapping("/{jobPostingId}")
     public ApiResponse<JobPostingDetailResponse> getJobPosting(@PathVariable long jobPostingId) {

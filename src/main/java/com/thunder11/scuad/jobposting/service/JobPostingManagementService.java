@@ -1,5 +1,7 @@
 package com.thunder11.scuad.jobposting.service;
 
+import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +18,8 @@ import com.thunder11.scuad.infra.ai.client.AiServiceClient;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.dto.response.JobPostingDetailResponse;
 import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
+import com.thunder11.scuad.jobposting.dto.request.JobPostingSearchCondition;
+import com.thunder11.scuad.jobposting.dto.response.JobPostingListResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +29,25 @@ public class JobPostingManagementService {
     private final JobPostRepository jobPostRepository;
     private final AiServiceClient aiServiceClient;
     private final JobMasterRepository jobMasterRepository;
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getJobPostings(JobPostingSearchCondition condition) {
+        List<JobMaster> masters = jobMasterRepository.searchJobPostings(condition);
+
+        List<JobPostingListResponse> items = masters.stream()
+                .map(JobPostingListResponse::from)
+                .toList();
+
+        Long nextCursor = items.isEmpty() ? null : items.get(items.size() - 1).getId();
+
+        boolean isLast = items.size() < condition.getSize();
+
+        return Map.of(
+                "items", items,
+                "next_cursor", nextCursor != null ? nextCursor : -1L,
+                "last", isLast
+        );
+    }
 
     @Transactional(readOnly = true)
     public JobPostingDetailResponse getJobPostingDetail(Long jobMasterId) {
