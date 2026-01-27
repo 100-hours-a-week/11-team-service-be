@@ -56,6 +56,12 @@ public class AuthRefreshToken {
         this.createdAt = LocalDateTime.now();
     }
 
+    // 토큰 업데이트 (재발급 시 사용)
+    public void updateToken(String newTokenValue, LocalDateTime newExpiresAt) {
+        this.tokenValue = newTokenValue;
+        this.expiresAt = newExpiresAt;
+        this.revokedAt = null;  // 철회 상태 초기화
+    }
 
      // 토큰 무효화, 로그아웃 시 호출하여 재발급 방지
     public void revoke() {
