@@ -2,32 +2,26 @@ package com.thunder11.scuad.jobposting.domain;
 
 import java.time.LocalDateTime;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.*;
 
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
 import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import com.thunder11.scuad.common.entity.BaseTimeEntity;
+import com.thunder11.scuad.file.domain.FileObject;
 import com.thunder11.scuad.jobposting.domain.type.ApplicationDocumentType;
 
 @Entity
 @Getter
+@Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Table(
         name = "application_documents",
         uniqueConstraints = {
@@ -50,8 +44,9 @@ public class ApplicationDocument extends BaseTimeEntity {
     @JoinColumn(name = "job_application_id", nullable = false)
     private JobApplication jobApplication;
 
-    @Column(name = "file_id", nullable = false)
-    private Long fileId;
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "file_id", nullable = false)
+    private FileObject file;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "doc_type", nullable = false, length = 20)
