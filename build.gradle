@@ -61,6 +61,7 @@ dependencies {
 	testImplementation 'com.h2database:h2'
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'com.querydsl:querydsl-jpa:5.0.0:jakarta'
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter-s3:3.1.0'
     compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 	annotationProcessor 'org.projectlombok:lombok'
