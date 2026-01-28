@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 @Component
-@ConfigurationProperties(prefix = "kakao.oauth")
+@ConfigurationProperties(prefix = "kakao")
 public class KakaoProperties {
 
     // 카카오 REST API 키
