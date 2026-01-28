@@ -26,7 +26,25 @@ public enum ErrorCode {
     REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "REFRESH_TOKEN_NOT_FOUND", "리프레시 토큰을 찾을 수 없습니다."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다."),
     KAKAO_TOKEN_REQUEST_FAILED(HttpStatus.BAD_REQUEST, "KAKAO_TOKEN_REQUEST_FAILED", "카카오 토큰 발급에 실패했습니다."),
-    KAKAO_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "KAKAO_API_ERROR", "카카오 API 호출 중 오류가 발생했습니다."),;
+    KAKAO_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "KAKAO_API_ERROR", "카카오 API 호출 중 오류가 발생했습니다."),
+
+    CHAT_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_ROOM_NOT_FOUND", "채팅방을 찾을 수 없습니다."),
+    CHAT_ROOM_ALREADY_EXISTS(HttpStatus.CONFLICT, "CHAT_ROOM_ALREADY_EXISTS", "이미 해당 공고에 생성한 채팅방이 있습니다."),
+    CHAT_ROOM_FULL(HttpStatus.CONFLICT, "CHAT_ROOM_FULL", "채팅방 정원이 가득 찼습니다."),
+    CHAT_ROOM_ALREADY_JOINED(HttpStatus.CONFLICT, "CHAT_ROOM_ALREADY_JOINED", "이미 채팅방에 참여 중입니다."),
+    CHAT_ROOM_ALREADY_JOINED_OTHER(HttpStatus.CONFLICT, "CHAT_ROOM_ALREADY_JOINED_OTHER", "이미 해당 공고의 다른 채팅방에 참여 중입니다."),
+    CHAT_ROOM_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHAT_ROOM_ACCESS_DENIED", "채팅방에 접근 권한이 없습니다."),
+    CHAT_ROOM_HOST_ONLY(HttpStatus.FORBIDDEN, "CHAT_ROOM_HOST_ONLY", "방장만 사용할 수 있는 기능입니다."),
+    CHAT_ROOM_CUTLINE_NOT_MET(HttpStatus.BAD_REQUEST, "CHAT_ROOM_CUTLINE_NOT_MET", "커트라인 점수를 충족하지 못했습니다."),
+    CHAT_ROOM_NO_DOCUMENTS(HttpStatus.BAD_REQUEST, "CHAT_ROOM_NO_DOCUMENTS", "서류를 제출하지 않았습니다."),
+    CHAT_ROOM_NO_SCORE(HttpStatus.BAD_REQUEST, "CHAT_ROOM_NO_SCORE", "AI 평가 점수가 없습니다."),
+    CHAT_ROOM_INVALID_CUTLINE(HttpStatus.BAD_REQUEST, "CHAT_ROOM_INVALID_CUTLINE", "커트라인 점수는 본인 점수 이하여야 합니다."),
+    CHAT_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_MEMBER_NOT_FOUND", "채팅방 멤버를 찾을 수 없습니다."),
+    CHAT_MEMBER_KICKED(HttpStatus.FORBIDDEN, "CHAT_MEMBER_KICKED", "강퇴된 멤버는 입장할 수 없습니다."),
+    CHAT_MESSAGE_INVALID_TYPE(HttpStatus.BAD_REQUEST, "CHAT_MESSAGE_INVALID_TYPE", "유효하지 않은 메시지 타입입니다."),
+    CHAT_MESSAGE_EMPTY(HttpStatus.BAD_REQUEST, "CHAT_MESSAGE_EMPTY", "메시지 내용이 비어있습니다."),
+    JOB_POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "JOB_POSTING_NOT_FOUND", "채용공고를 찾을 수 없습니다."),
+    JOB_APPLICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "JOB_APPLICATION_NOT_FOUND", "지원 정보를 찾을 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;
