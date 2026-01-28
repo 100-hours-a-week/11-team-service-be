@@ -7,12 +7,20 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import lombok.RequiredArgsConstructor;
+
+import com.thunder11.scuad.auth.security.JwtAuthenticationFilter;
 
 // Spring Security 설정
-// OAuth 로그인 URL은 퍼블릭 허용, JWT 기반 인증 사용
+// JWT 기반 인증, OAuth 로그인 URL은 퍼블릭 허용
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -40,7 +48,10 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
 
                 // HTTP Basic 인증 비활성화
-                .httpBasic(AbstractHttpConfigurer::disable);
+                .httpBasic(AbstractHttpConfigurer::disable)
+
+                // JWT 인증 필터 추가 (UsernamePasswordAuthenticationFilter 앞에 배치)
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
