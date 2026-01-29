@@ -33,4 +33,12 @@ public interface ChatRoomMemberRepository extends JpaRepository<ChatRoomMember, 
             "AND crm.role = 'HOST' " +
             "AND crm.kickedAt IS NULL")
     boolean isHostOfRoom(@Param("chatRoomId") Long chatRoomId, @Param("userId") Long userId);
+
+    // 강퇴 여부 확인 (kicked_at이 있는 레코드 존재 여부)
+    @Query("SELECT CASE WHEN COUNT(crm) > 0 THEN true ELSE false END " +
+            "FROM ChatRoomMember crm " +
+            "WHERE crm.chatRoomId = :chatRoomId " +
+            "AND crm.userId = :userId " +
+            "AND crm.kickedAt IS NOT NULL")
+    boolean existsKickedMember(@Param("chatRoomId") Long chatRoomId, @Param("userId") Long userId);
 }

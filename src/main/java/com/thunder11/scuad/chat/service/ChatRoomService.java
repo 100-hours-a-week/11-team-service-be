@@ -277,7 +277,6 @@ public class ChatRoomService {
             log.warn("이미 참여 중인 채팅방: chatRoomId={}, userId={}", chatRoomId, userId);
             throw new ApiException(ErrorCode.CHAT_ROOM_ALREADY_JOINED);
         }
-
         // 4. 정원 확인
         long currentParticipants = chatRoomMemberRepository.countByChatRoomIdAndKickedAtIsNull(chatRoomId);
         if (currentParticipants >= chatRoom.getMaxParticipants()) {
@@ -289,10 +288,14 @@ public class ChatRoomService {
         // TODO: 5. jobApplicationId 조회 (JobPosting 연동 필요)
         Long jobApplicationId = 1L; // 임시값
 
-        // TODO: 6. 강퇴 여부 확인
+        // 6. 강퇴 여부 확인
         // ChatRoomMember를 찾을 때 kicked_at이 NULL인 것만 찾으므로,
         // 만약 강퇴된 기록이 있으면 별도 체크 필요
         // (현재는 kicked_at이 있으면 재입장 차단하는 로직 필요)
+        if (chatRoomMemberRepository.existsKickedMember(chatRoomId, userId)) {
+            log.warn("강퇴된 사용자의 재입장 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_MEMBER_KICKED);
+        }
 
         // TODO: 7. 같은 공고 다른 방 참여 확인
         // Optional<ChatRoomMember> otherRoom = chatRoomMemberRepository
