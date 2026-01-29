@@ -188,4 +188,23 @@ public class ChatRoomController {
                 "채팅방 퇴장 완료"
         );
     }
+
+    // 멤버 강퇴
+    @DeleteMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}")
+    public ApiResponse<Void> kickMember(
+            @PathVariable Long chatRoomId,
+            @PathVariable Long chatRoomMemberId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("DELETE /api/v1/chat-rooms/{}/members/{} - hostUserId={}",
+                chatRoomId, chatRoomMemberId, userPrincipal.getUserId());
+
+        chatRoomService.kickMember(chatRoomId, userPrincipal.getUserId(), chatRoomMemberId);
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "MEMBER_KICKED",
+                "멤버 강퇴 완료"
+        );
+    }
 }
