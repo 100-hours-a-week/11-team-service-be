@@ -210,4 +210,50 @@ public class ChatRoomService {
 
         return savedChatRoom.getChatRoomId();
     }
+
+    // 채팅방 상세 정보 조회
+    public ChatRoomDetailResponse getChatRoomDetail(Long chatRoomId, Long userId) {
+        log.info("채팅방 상세 조회 시작: chatRoomId={}, userId={}", chatRoomId, userId);
+
+        // 1. 채팅방 존재 확인
+        ChatRoom chatRoom = chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // TODO: 2. 권한 확인 (참여자만 조회 가능)
+        // boolean isMember = chatRoomMemberRepository
+        //     .findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, userId)
+        //     .isPresent();
+        // if (!isMember) {
+        //     throw new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+        // }
+
+        // 3. 현재 인원 수 조회
+        long memberCount = chatRoomMemberRepository.countByChatRoomIdAndKickedAtIsNull(chatRoomId);
+
+        // TODO: 4. 공고 정보 조회 (JobPosting 연동 필요)
+        ChatRoomDetailResponse.JobMasterSummary jobMasterSummary = ChatRoomDetailResponse.JobMasterSummary.builder()
+                .jobMasterId(chatRoom.getJobMasterId())
+                .companyName("회사명") // 임시값
+                .jobTitle("직무명") // 임시값
+                .build();
+
+        // 5. 응답 생성
+        ChatRoomDetailResponse response = ChatRoomDetailResponse.builder()
+                .chatRoomId(chatRoom.getChatRoomId())
+                .roomName(chatRoom.getRoomName())
+                .roomGoal(chatRoom.getRoomGoal())
+                .cutlineScore(chatRoom.getCutlineScore())
+                .currentParticipants((int) memberCount)
+                .maxParticipants(chatRoom.getMaxParticipants())
+                .preferredConditions(chatRoom.getPreferredConditions())
+                .status(chatRoom.getStatus())
+                .jobMaster(jobMasterSummary)
+                .memberCount((int) memberCount)
+                .createdAt(chatRoom.getCreatedAt())
+                .build();
+
+        log.info("채팅방 상세 조회 완료: chatRoomId={}", chatRoomId);
+
+        return response;
+    }
 }

@@ -1,5 +1,6 @@
 package com.thunder11.scuad.chat.controller;
 
+import com.thunder11.scuad.chat.dto.response.ChatRoomDetailResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -70,6 +71,28 @@ public class ChatRoomController {
                 "CHAT_ROOM_CREATED",
                 "채팅방 생성 완료",
                 chatRoomId
+        );
+    }
+
+    // 채팅방 상세 정보 조회
+    @GetMapping("/chat-rooms/{chatRoomId}")
+    public ApiResponse<ChatRoomDetailResponse> getChatRoomDetail(
+            @PathVariable Long chatRoomId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("GET /api/v1/chat-rooms/{} - userId={}",
+                chatRoomId, userPrincipal.getUserId());
+
+        ChatRoomDetailResponse response = chatRoomService.getChatRoomDetail(
+                chatRoomId,
+                userPrincipal.getUserId()
+        );
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "SUCCESS",
+                "채팅방 상세 조회 성공",
+                response
         );
     }
 }
