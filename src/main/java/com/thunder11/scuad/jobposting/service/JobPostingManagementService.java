@@ -45,14 +45,16 @@ public class JobPostingManagementService {
         return Map.of(
                 "items", items,
                 "next_cursor", nextCursor != null ? nextCursor : -1L,
-                "last", isLast
-        );
+                "last", isLast);
     }
 
     @Transactional(readOnly = true)
-    public JobPostingDetailResponse getJobPostingDetail(Long jobMasterId) {
-        JobMaster jobMaster = jobMasterRepository.findByIdWithDetails(jobMasterId)
+    public JobPostingDetailResponse getJobPostingDetail(Long jobPostingId) {
+        JobPost jobPost = jobPostRepository.findByIdAndDeletedAtIsNull(jobPostingId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고가 존재하지 않습니다."));
+
+        JobMaster jobMaster = jobMasterRepository.findByIdWithDetails(jobPost.getJobMaster().getId())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고 상세 정보를 찾을 수 없습니다."));
 
         return JobPostingDetailResponse.from(jobMaster);
     }
@@ -62,7 +64,7 @@ public class JobPostingManagementService {
         JobPost jobPost = jobPostRepository.findByIdAndDeletedAtIsNull(jobPostingId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고가 존재하지 않습니다."));
 
-        if(!jobPost.getCreatedBy().equals(userId)) {
+        if (!jobPost.getCreatedBy().equals(userId)) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
 
@@ -79,8 +81,7 @@ public class JobPostingManagementService {
         return new JobPostingConfirmResponse(
                 jobPost.getId(),
                 jobPost.getJobMaster().getId(),
-                jobPost.getRegistrationStatus()
-        );
+                jobPost.getRegistrationStatus());
     }
 
     @Transactional
@@ -88,7 +89,7 @@ public class JobPostingManagementService {
         JobPost jobPost = jobPostRepository.findByIdAndDeletedAtIsNull(jobPostingId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
 
-        if(!jobPost.getCreatedBy().equals(userId)) {
+        if (!jobPost.getCreatedBy().equals(userId)) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
 
@@ -98,7 +99,7 @@ public class JobPostingManagementService {
 
         boolean hasRemainPosts = jobPostRepository.existsByJobMasterIdAndDeletedAtIsNull(jobMasterId);
 
-        if(!hasRemainPosts) {
+        if (!hasRemainPosts) {
             jobMasterRepository.deleteHardById(jobMasterId);
         }
 

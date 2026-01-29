@@ -16,6 +16,7 @@ public enum ErrorCode {
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "서버 오류가 발생했습니다."),
     AI_SERVICE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "AI_SERVICE_ERROR", "AI 서비스 연동 중 오류가 발생했습니다."),
     FILE_UPLOAD_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_UPLOAD_ERROR","파일 업로드 중 오류가 발생했습니다."),
+    ACCEPTED(HttpStatus.ACCEPTED, "ACCEPTED", "요청이 접수되어 처리 중입니다."),
 
     // oauth 도메인 에러
     INVALID_OAUTH_CODE(HttpStatus.BAD_REQUEST, "INVALID_OAUTH_CODE", "유효하지 않은 OAuth 인가 코드입니다."),
