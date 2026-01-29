@@ -87,6 +87,27 @@ public class JobPostingAnalysisService {
 
         AiJobAnalysisResponse aiData = aiServiceClient.analyzeJob(aiRequest);
         log.info("AI 분석 데이터: {}", aiData);
+        if (aiData.isExisting() && aiData.getJobPostingId() != null) {
+            JobPost existingPost = jobPostRepository.findByIdAndDeletedAtIsNull(aiData.getJobPostingId())
+                    .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL_ERROR, "AI가 식별한 기존 공고를 찾을 수 없습니다."));
+
+            JobMaster jobMaster = existingPost.getJobMaster();
+
+            return JobAnalysisResultResponse.builder()
+                    .jobMasterId(jobMaster.getId())
+                    .jobPostingId(existingPost.getId())
+                    .isExisting(true) // 프론트엔드가 이 값을 보고 "이미 등록된 공고" 팝업을 띄움
+                    .companyName(jobMaster.getCompany().getName())
+                    .jobTitle(existingPost.getRawJobTitle())
+                    .mainTasks(jobMaster.getMainTasks())
+                    .skills(jobMaster.getJobMasterSkills().stream()
+                            .map(jms -> jms.getSkill().getName())
+                            .toList())
+                    .aiSummary(jobMaster.getAiSummary())
+                    .startDate(jobMaster.getStartDate())
+                    .status(jobMaster.getStatus().name())
+                    .build();
+        }
 
         String sourceDomain = extractDomain(normalizedUrl);
         Company company = resolveCompany(aiData.getCompanyName(), null, sourceDomain);
@@ -186,7 +207,6 @@ public class JobPostingAnalysisService {
                 .startDate(savedJobMaster.getStartDate())
                 .status(savedJobMaster.getStatus().name())
                 .build();
-
     }
 
     private String normalizeCompanyName(String rawName) {

@@ -5,6 +5,7 @@ import java.util.Map;
 import jakarta.validation.Valid;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -12,7 +13,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import lombok.RequiredArgsConstructor;
@@ -26,6 +26,8 @@ import com.thunder11.scuad.jobposting.dto.response.JobPostingDetailResponse;
 import com.thunder11.scuad.jobposting.service.JobPostingAnalysisService;
 import com.thunder11.scuad.jobposting.service.JobPostingManagementService;
 import com.thunder11.scuad.jobposting.dto.request.JobPostingSearchCondition;
+import com.thunder11.scuad.auth.security.UserPrincipal;
+
 
 @RestController
 @RequestMapping("/api/v1/job-postings")
@@ -44,7 +46,10 @@ public class jobPostingController {
     }
 
     @GetMapping("/{jobPostingId}")
-    public ApiResponse<JobPostingDetailResponse> getJobPosting(@PathVariable long jobPostingId) {
+    public ApiResponse<JobPostingDetailResponse> getJobPosting(
+            @PathVariable long jobPostingId,
+            @AuthenticationPrincipal UserPrincipal principal
+    ) {
         JobPostingDetailResponse result = jobPostingManagementService.getJobPostingDetail(jobPostingId);
 
         return ApiResponse.of(200, "JOB_POST_LOAD_SUCCESS", "공고 분석 결과 조회 성공", result);
@@ -53,9 +58,9 @@ public class jobPostingController {
     @PostMapping
     public ApiResponse<JobAnalysisResultResponse> analyzeJobPosting(
             @Valid @RequestBody JobUrlAnalysisRequest request,
-            @RequestParam(value = "userId", required = false, defaultValue = "1") Long userId // 임시
+            @AuthenticationPrincipal UserPrincipal principal
     ) {
-        JobAnalysisResultResponse result = jobPostingAnalysisService.analyze(request.getUrl(),  userId);
+        JobAnalysisResultResponse result = jobPostingAnalysisService.analyze(request.getUrl(),  principal.getUserId());
         return ApiResponse.of(200, "JOB_ANALYSIS_SUCCESS","채용공고 분석이 완료되었습니다.", result);
     }
 
@@ -63,8 +68,8 @@ public class jobPostingController {
     public ApiResponse<JobPostingConfirmResponse> confirmJobPosting(
             @PathVariable Long jobPostingId,
             @RequestBody @Valid JobPostingConfirmRequest request,
-            @RequestParam(value = "userId", required = false, defaultValue = "1") Long userId) {
-        JobPostingConfirmResponse result = jobPostingManagementService.confirmJobPosting(jobPostingId, userId, request.getRegistrationStatus());
+            @AuthenticationPrincipal UserPrincipal principal) {
+        JobPostingConfirmResponse result = jobPostingManagementService.confirmJobPosting(jobPostingId, principal.getUserId(), request.getRegistrationStatus());
 
         return ApiResponse.of(200, "JOB_MASTER_REGISTERED","채용공고가 성공적으로 등록되었습니다.", result);
     }
@@ -72,9 +77,9 @@ public class jobPostingController {
     @DeleteMapping("/{jobPostingId}")
     public ResponseEntity<Void> deleteJobPosting(
             @PathVariable Long jobPostingId,
-            @RequestParam(value = "userId", required = false, defaultValue = "1") Long userId
+            @AuthenticationPrincipal UserPrincipal principal
     ) {
-        jobPostingManagementService.deleteJobPosting(jobPostingId, userId);
+        jobPostingManagementService.deleteJobPosting(jobPostingId, principal.getUserId());
 
         return ResponseEntity.noContent().build();
     }
