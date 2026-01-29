@@ -95,4 +95,22 @@ public class ChatRoomController {
                 response
         );
     }
+
+    // 채팅방 입장
+    @PostMapping("/chat-rooms/{chatRoomId}/members")
+    public ApiResponse<Void> joinChatRoom(
+            @PathVariable Long chatRoomId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("POST /api/v1/chat-rooms/{}/members - userId={}",
+                chatRoomId, userPrincipal.getUserId());
+
+        chatRoomService.joinChatRoom(chatRoomId, userPrincipal.getUserId());
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "CHAT_ROOM_JOINED",
+                "채팅방 입장 완료"
+        );
+    }
 }
