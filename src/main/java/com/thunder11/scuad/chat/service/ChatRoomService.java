@@ -320,4 +320,32 @@ public class ChatRoomService {
 
         // TODO: 11. 시스템 메시지 생성 ("OO님이 입장했습니다")
     }
+
+    // 채팅방 퇴장
+    @Transactional
+    public void leaveChatRoom(Long chatRoomId, Long userId) {
+        log.info("채팅방 퇴장 시작: chatRoomId={}, userId={}", chatRoomId, userId);
+
+        // 1. 채팅방 존재 확인
+        ChatRoom chatRoom = chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 멤버십 조회
+        ChatRoomMember member = chatRoomMemberRepository
+                .findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_MEMBER_NOT_FOUND));
+
+        // 3. 방장은 퇴장 불가 (방을 종료해야 함)
+        if (member.getRole() == MemberRole.HOST) {
+            log.warn("방장의 퇴장 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_HOST_ONLY);
+        }
+
+        // 4. 멤버 삭제
+        chatRoomMemberRepository.delete(member);
+        log.info("채팅방 퇴장 완료: chatRoomId={}, userId={}, chatRoomMemberId={}",
+                chatRoomId, userId, member.getChatRoomMemberId());
+
+        // TODO: 5. 시스템 메시지 생성 ("OO님이 퇴장했습니다")
+    }
 }

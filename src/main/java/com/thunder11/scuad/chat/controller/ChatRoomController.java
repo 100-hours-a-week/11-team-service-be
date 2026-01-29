@@ -170,4 +170,22 @@ public class ChatRoomController {
                 response
         );
     }
+
+    // 채팅방 퇴장
+    @DeleteMapping("/chat-rooms/{chatRoomId}/members/me")
+    public ApiResponse<Void> leaveChatRoom(
+            @PathVariable Long chatRoomId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("DELETE /api/v1/chat-rooms/{}/members/me - userId={}",
+                chatRoomId, userPrincipal.getUserId());
+
+        chatRoomService.leaveChatRoom(chatRoomId, userPrincipal.getUserId());
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "CHAT_ROOM_LEFT",
+                "채팅방 퇴장 완료"
+        );
+    }
 }
