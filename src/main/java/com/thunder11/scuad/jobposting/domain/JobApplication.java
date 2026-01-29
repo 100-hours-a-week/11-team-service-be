@@ -25,6 +25,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import com.thunder11.scuad.auth.domain.User;
 import com.thunder11.scuad.common.entity.BaseTimeEntity;
 import com.thunder11.scuad.jobposting.domain.type.ApplicationStatus;
 
@@ -46,8 +47,9 @@ public class JobApplication extends BaseTimeEntity {
     @Column(name = "job_application_id")
     private Long id;
 
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "job_master_id", nullable = false)
