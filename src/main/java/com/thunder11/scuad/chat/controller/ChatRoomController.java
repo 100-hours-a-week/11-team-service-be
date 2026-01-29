@@ -1,6 +1,8 @@
 package com.thunder11.scuad.chat.controller;
 
+import com.thunder11.scuad.chat.dto.response.ChatMessageListResponse;
 import com.thunder11.scuad.chat.dto.response.ChatRoomDetailResponse;
+import com.thunder11.scuad.chat.service.ChatMessageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +25,7 @@ import com.thunder11.scuad.common.response.ApiResponse;
 public class ChatRoomController {
 
     private final ChatRoomService chatRoomService;
+    private final ChatMessageService chatMessageService;
 
     // 공고별 채팅방 목록 조회
     @GetMapping("/job-postings/{jobMasterId}/chat-rooms")
@@ -111,6 +114,34 @@ public class ChatRoomController {
                 HttpStatus.OK.value(),
                 "CHAT_ROOM_JOINED",
                 "채팅방 입장 완료"
+        );
+    }
+
+    // 채팅 메시지 목록 조회
+    @GetMapping("/chat-rooms/{chatRoomId}/messages")
+    public ApiResponse<ChatMessageListResponse> getMessages(
+            @PathVariable Long chatRoomId,
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(required = false) Long since,
+            @RequestParam(defaultValue = "50") int size,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("GET /api/v1/chat-rooms/{}/messages - cursor={}, since={}, size={}, userId={}",
+                chatRoomId, cursor, since, size, userPrincipal.getUserId());
+
+        ChatMessageListResponse response = chatMessageService.getMessages(
+                chatRoomId,
+                userPrincipal.getUserId(),
+                cursor,
+                since,
+                size
+        );
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "SUCCESS",
+                "메시지 목록 조회 성공",
+                response
         );
     }
 }
