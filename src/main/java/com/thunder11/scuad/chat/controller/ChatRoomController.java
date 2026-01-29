@@ -14,7 +14,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import com.thunder11.scuad.auth.security.UserPrincipal;
-import com.thunder11.scuad.chat.dto.request.ChatRoomCreateRequest;
 import com.thunder11.scuad.chat.dto.response.ChatRoomListResponse;
 import com.thunder11.scuad.chat.service.ChatMessageService;
 import com.thunder11.scuad.chat.service.ChatRoomService;

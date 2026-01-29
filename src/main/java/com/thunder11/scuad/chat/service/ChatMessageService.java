@@ -58,10 +58,17 @@ public class ChatMessageService {
             throw new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
         }
 
-        List<ChatMessage> messages;
+        // 3. since와 cursor 동시 사용 검증
+        if (since != null && cursor != null) {
+            log.warn("since와 cursor를 동시에 사용할 수 없습니다: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.INVALID_INPUT_VALUE);
+        }
 
-        // 3. 폴링 요청인지 과거 메시지 로드인지 구분
-        if (since != null) {
+        List<ChatMessage> messages;
+        boolean isPolling = (since != null);
+
+        // 4. 폴링 요청인지 과거 메시지 로드인지 구분
+        if (isPolling) {
             // 폴링: since 이후의 최신 메시지 조회
             messages = chatMessageRepository.findNewMessagesSince(chatRoomId, since);
             log.info("폴링 메시지 조회 완료: {}개", messages.size());
@@ -75,29 +82,29 @@ public class ChatMessageService {
             log.info("과거 메시지 조회 완료: {}개", messages.size());
         }
 
-        // 4. 페이징 정보 계산 (폴링이 아닐 때만)
-        boolean hasNext = false;
-        Long nextCursor = null;
+        // 5. 페이징 정보 계산 (폴링이 아닐 때만)
+        PaginationResponse pagination = null;
 
-        if (since == null && messages.size() > size) {
-            hasNext = true;
-            messages = messages.subList(0, size);
-            nextCursor = messages.get(messages.size() - 1).getMessageId();
+        if (!isPolling) {
+            boolean hasNext = messages.size() > size;
+            if (hasNext) {
+                messages = messages.subList(0, size);
+            }
+
+            Long nextCursor = null;
+            if (hasNext && !messages.isEmpty()) {
+                nextCursor = messages.get(messages.size() - 1).getMessageId();
+            }
+
+            pagination = PaginationResponse.of(nextCursor, hasNext, messages.size());
         }
 
-        // 5. ChatMessage -> ChatMessageResponse 변환
+        // 6. ChatMessage -> ChatMessageResponse 변환
         List<ChatMessageResponse> messageResponses = messages.stream()
                 .map(this::convertToResponse)
                 .collect(Collectors.toList());
 
-        // 6. 페이징 정보 생성
-        PaginationResponse pagination = PaginationResponse.of(
-                nextCursor,
-                hasNext,
-                messageResponses.size()
-        );
-
-        log.info("메시지 목록 조회 완료: 총 {}개", messageResponses.size());
+        log.info("메시지 목록 조회 완료: 총 {}개, 폴링={}", messageResponses.size(), isPolling);
 
         return ChatMessageListResponse.of(messageResponses, pagination);
     }
@@ -114,6 +121,7 @@ public class ChatMessageService {
                     .fileId(message.getFileId())
                     .fileName("파일명") // 임시값
                     .fileUrl("파일URL") // 임시값
+                    .fileSize(0L) // 임시값
                     .build();
         }
 

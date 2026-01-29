@@ -45,7 +45,8 @@ public enum ErrorCode {
     CHAT_MESSAGE_INVALID_TYPE(HttpStatus.BAD_REQUEST, "CHAT_MESSAGE_INVALID_TYPE", "유효하지 않은 메시지 타입입니다."),
     CHAT_MESSAGE_EMPTY(HttpStatus.BAD_REQUEST, "CHAT_MESSAGE_EMPTY", "메시지 내용이 비어있습니다."),
     JOB_POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "JOB_POSTING_NOT_FOUND", "채용공고를 찾을 수 없습니다."),
-    JOB_APPLICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "JOB_APPLICATION_NOT_FOUND", "지원 정보를 찾을 수 없습니다.");
+    JOB_APPLICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "JOB_APPLICATION_NOT_FOUND", "지원 정보를 찾을 수 없습니다."),
+    INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "INVALID_INPUT_VALUE", "since와 cursor를 동시에 사용할 수 없습니다");
 
     private final HttpStatus status;
     private final String code;
