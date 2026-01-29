@@ -3,6 +3,7 @@ package com.thunder11.scuad.chat.service;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.thunder11.scuad.chat.domain.type.RoomStatus;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -209,5 +210,113 @@ public class ChatRoomService {
         // TODO: 8. 시스템 메시지 생성 ("채팅방이 생성되었습니다")
 
         return savedChatRoom.getChatRoomId();
+    }
+
+    // 채팅방 상세 정보 조회
+    public ChatRoomDetailResponse getChatRoomDetail(Long chatRoomId, Long userId) {
+        log.info("채팅방 상세 조회 시작: chatRoomId={}, userId={}", chatRoomId, userId);
+
+        // 1. 채팅방 존재 확인
+        ChatRoom chatRoom = chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // TODO: 2. 권한 확인 (참여자만 조회 가능)
+        // boolean isMember = chatRoomMemberRepository
+        //     .findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, userId)
+        //     .isPresent();
+        // if (!isMember) {
+        //     throw new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+        // }
+
+        // 3. 현재 인원 수 조회
+        long memberCount = chatRoomMemberRepository.countByChatRoomIdAndKickedAtIsNull(chatRoomId);
+
+        // TODO: 4. 공고 정보 조회 (JobPosting 연동 필요)
+        ChatRoomDetailResponse.JobMasterSummary jobMasterSummary = ChatRoomDetailResponse.JobMasterSummary.builder()
+                .jobMasterId(chatRoom.getJobMasterId())
+                .companyName("회사명") // 임시값
+                .jobTitle("직무명") // 임시값
+                .build();
+
+        // 5. 응답 생성
+        ChatRoomDetailResponse response = ChatRoomDetailResponse.builder()
+                .chatRoomId(chatRoom.getChatRoomId())
+                .roomName(chatRoom.getRoomName())
+                .roomGoal(chatRoom.getRoomGoal())
+                .cutlineScore(chatRoom.getCutlineScore())
+                .currentParticipants((int) memberCount)
+                .maxParticipants(chatRoom.getMaxParticipants())
+                .preferredConditions(chatRoom.getPreferredConditions())
+                .status(chatRoom.getStatus())
+                .jobMaster(jobMasterSummary)
+                .memberCount((int) memberCount)
+                .createdAt(chatRoom.getCreatedAt())
+                .build();
+
+        log.info("채팅방 상세 조회 완료: chatRoomId={}", chatRoomId);
+
+        return response;
+    }
+
+    // 채팅방 입장
+    @Transactional
+    public void joinChatRoom(Long chatRoomId, Long userId) {
+        log.info("채팅방 입장 시작: chatRoomId={}, userId={}", chatRoomId, userId);
+
+        // 1. 채팅방 존재 확인
+        ChatRoom chatRoom = chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 채팅방 상태 확인 (ACTIVE만 입장 가능)
+        if (chatRoom.getStatus() != RoomStatus.ACTIVE) {
+            throw new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND);
+        }
+
+        // 3. 이미 참여 중인지 확인
+        if (chatRoomMemberRepository.findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, userId).isPresent()) {
+            log.warn("이미 참여 중인 채팅방: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_ALREADY_JOINED);
+        }
+
+        // 4. 정원 확인
+        long currentParticipants = chatRoomMemberRepository.countByChatRoomIdAndKickedAtIsNull(chatRoomId);
+        if (currentParticipants >= chatRoom.getMaxParticipants()) {
+            log.warn("정원 초과: chatRoomId={}, current={}, max={}",
+                    chatRoomId, currentParticipants, chatRoom.getMaxParticipants());
+            throw new ApiException(ErrorCode.CHAT_ROOM_FULL);
+        }
+
+        // TODO: 5. jobApplicationId 조회 (JobPosting 연동 필요)
+        Long jobApplicationId = 1L; // 임시값
+
+        // TODO: 6. 강퇴 여부 확인
+        // ChatRoomMember를 찾을 때 kicked_at이 NULL인 것만 찾으므로,
+        // 만약 강퇴된 기록이 있으면 별도 체크 필요
+        // (현재는 kicked_at이 있으면 재입장 차단하는 로직 필요)
+
+        // TODO: 7. 같은 공고 다른 방 참여 확인
+        // Optional<ChatRoomMember> otherRoom = chatRoomMemberRepository
+        //     .findByJobApplicationIdAndNotKicked(jobApplicationId);
+        // if (otherRoom.isPresent() && !otherRoom.get().getChatRoomId().equals(chatRoomId)) {
+        //     throw new ApiException(ErrorCode.CHAT_ROOM_ALREADY_JOINED_OTHER);
+        // }
+
+        // TODO: 8. 서류 제출 확인 (JobPosting 연동 필요)
+
+        // TODO: 9. 커트라인 점수 확인 (JobPosting 연동 필요)
+
+        // 10. 멤버 등록
+        ChatRoomMember member = ChatRoomMember.builder()
+                .chatRoomId(chatRoomId)
+                .userId(userId)
+                .jobApplicationId(jobApplicationId)
+                .role(MemberRole.MEMBER)
+                .build();
+
+        chatRoomMemberRepository.save(member);
+        log.info("채팅방 입장 완료: chatRoomId={}, userId={}, chatRoomMemberId={}",
+                chatRoomId, userId, member.getChatRoomMemberId());
+
+        // TODO: 11. 시스템 메시지 생성 ("OO님이 입장했습니다")
     }
 }
