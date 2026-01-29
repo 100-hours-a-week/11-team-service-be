@@ -3,6 +3,8 @@ package com.thunder11.scuad.chat.service;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.thunder11.scuad.chat.domain.type.MessageType;
+import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -124,5 +126,66 @@ public class ChatMessageService {
                 .file(fileInfo)
                 .createdAt(message.getSentAt())
                 .build();
+    }
+
+    // 메시지 전송
+    @Transactional
+    public ChatMessageResponse sendMessage(
+            Long chatRoomId,
+            Long userId,
+            MessageSendRequest request
+    ) {
+        log.info("메시지 전송 시작: chatRoomId={}, userId={}, messageType={}",
+                chatRoomId, userId, request.getMessageType());
+
+        // 1. 채팅방 존재 확인
+        chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 멤버십 확인 (참여자만 메시지 전송 가능)
+        boolean isMember = chatRoomMemberRepository
+                .findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, userId)
+                .isPresent();
+
+        if (!isMember) {
+            log.warn("채팅방 멤버가 아닌 사용자의 메시지 전송 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+        }
+
+        // 3. 메시지 타입 검증
+        if (request.getMessageType() == MessageType.SYSTEM) {
+            log.warn("사용자가 시스템 메시지 전송 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_MESSAGE_INVALID_TYPE);
+        }
+
+        // 4. 메시지 내용 검증
+        if (request.getMessageType() == MessageType.TEXT &&
+                (request.getContent() == null || request.getContent().trim().isEmpty())) {
+            log.warn("빈 텍스트 메시지 전송 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_MESSAGE_EMPTY);
+        }
+
+        // 5. 파일 메시지 검증
+        if (request.getMessageType() == MessageType.FILE && request.getFileId() == null) {
+            log.warn("fileId 없는 FILE 타입 메시지: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_MESSAGE_INVALID_TYPE);
+        }
+
+        // TODO: 6. 파일 존재 여부 확인 (File 도메인 연동 필요)
+
+        // 7. 메시지 생성
+        ChatMessage message = ChatMessage.builder()
+                .chatRoomId(chatRoomId)
+                .senderId(userId)
+                .messageType(request.getMessageType())
+                .content(request.getContent())
+                .fileId(request.getFileId())
+                .build();
+
+        ChatMessage savedMessage = chatMessageRepository.save(message);
+        log.info("메시지 전송 완료: messageId={}", savedMessage.getMessageId());
+
+        // 8. 응답 생성
+        return convertToResponse(savedMessage);
     }
 }
