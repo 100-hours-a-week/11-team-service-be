@@ -397,4 +397,34 @@ public class ChatRoomService {
 
         // TODO: 8. 시스템 메시지 생성 ("OO님이 강퇴되었습니다")
     }
+
+    // 채팅방 종료
+    @Transactional
+    public void closeChatRoom(Long chatRoomId, Long userId) {
+        log.info("채팅방 종료 시작: chatRoomId={}, userId={}", chatRoomId, userId);
+
+        // 1. 채팅방 존재 확인
+        ChatRoom chatRoom = chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 방장 권한 확인
+        boolean isHost = chatRoomMemberRepository.isHostOfRoom(chatRoomId, userId);
+        if (!isHost) {
+            log.warn("방장이 아닌 사용자의 방 종료 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_HOST_ONLY);
+        }
+
+        // 3. 이미 종료된 방인지 확인
+        if (chatRoom.getStatus() == RoomStatus.CLOSED) {
+            log.warn("이미 종료된 채팅방: chatRoomId={}", chatRoomId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND);
+        }
+
+        // 4. 채팅방 종료
+        chatRoom.close();
+        chatRoomRepository.save(chatRoom);
+        log.info("채팅방 종료 완료: chatRoomId={}", chatRoomId);
+
+        // TODO: 5. 시스템 메시지 생성 ("채팅방이 종료되었습니다")
+    }
 }

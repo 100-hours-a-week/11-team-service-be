@@ -207,4 +207,22 @@ public class ChatRoomController {
                 "멤버 강퇴 완료"
         );
     }
+
+    // 채팅방 종료
+    @PatchMapping("/chat-rooms/{chatRoomId}/close")
+    public ApiResponse<Void> closeChatRoom(
+            @PathVariable Long chatRoomId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("PATCH /api/v1/chat-rooms/{}/close - userId={}",
+                chatRoomId, userPrincipal.getUserId());
+
+        chatRoomService.closeChatRoom(chatRoomId, userPrincipal.getUserId());
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "CHAT_ROOM_CLOSED",
+                "채팅방 종료 완료"
+        );
+    }
 }
