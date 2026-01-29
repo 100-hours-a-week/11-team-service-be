@@ -170,4 +170,59 @@ public class ChatRoomController {
                 response
         );
     }
+
+    // 채팅방 퇴장
+    @DeleteMapping("/chat-rooms/{chatRoomId}/members/me")
+    public ApiResponse<Void> leaveChatRoom(
+            @PathVariable Long chatRoomId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("DELETE /api/v1/chat-rooms/{}/members/me - userId={}",
+                chatRoomId, userPrincipal.getUserId());
+
+        chatRoomService.leaveChatRoom(chatRoomId, userPrincipal.getUserId());
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "CHAT_ROOM_LEFT",
+                "채팅방 퇴장 완료"
+        );
+    }
+
+    // 멤버 강퇴
+    @DeleteMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}")
+    public ApiResponse<Void> kickMember(
+            @PathVariable Long chatRoomId,
+            @PathVariable Long chatRoomMemberId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("DELETE /api/v1/chat-rooms/{}/members/{} - hostUserId={}",
+                chatRoomId, chatRoomMemberId, userPrincipal.getUserId());
+
+        chatRoomService.kickMember(chatRoomId, userPrincipal.getUserId(), chatRoomMemberId);
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "MEMBER_KICKED",
+                "멤버 강퇴 완료"
+        );
+    }
+
+    // 채팅방 종료
+    @PatchMapping("/chat-rooms/{chatRoomId}/close")
+    public ApiResponse<Void> closeChatRoom(
+            @PathVariable Long chatRoomId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("PATCH /api/v1/chat-rooms/{}/close - userId={}",
+                chatRoomId, userPrincipal.getUserId());
+
+        chatRoomService.closeChatRoom(chatRoomId, userPrincipal.getUserId());
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "CHAT_ROOM_CLOSED",
+                "채팅방 종료 완료"
+        );
+    }
 }

@@ -320,4 +320,111 @@ public class ChatRoomService {
 
         // TODO: 11. 시스템 메시지 생성 ("OO님이 입장했습니다")
     }
+
+    // 채팅방 퇴장
+    @Transactional
+    public void leaveChatRoom(Long chatRoomId, Long userId) {
+        log.info("채팅방 퇴장 시작: chatRoomId={}, userId={}", chatRoomId, userId);
+
+        // 1. 채팅방 존재 확인
+        ChatRoom chatRoom = chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 멤버십 조회
+        ChatRoomMember member = chatRoomMemberRepository
+                .findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_MEMBER_NOT_FOUND));
+
+        // 3. 방장은 퇴장 불가 (방을 종료해야 함)
+        if (member.getRole() == MemberRole.HOST) {
+            log.warn("방장의 퇴장 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_HOST_ONLY);
+        }
+
+        // 4. 멤버 삭제
+        chatRoomMemberRepository.delete(member);
+        log.info("채팅방 퇴장 완료: chatRoomId={}, userId={}, chatRoomMemberId={}",
+                chatRoomId, userId, member.getChatRoomMemberId());
+
+        // TODO: 5. 시스템 메시지 생성 ("OO님이 퇴장했습니다")
+    }
+
+    // 멤버 강퇴
+    @Transactional
+    public void kickMember(Long chatRoomId, Long hostUserId, Long chatRoomMemberId) {
+        log.info("멤버 강퇴 시작: chatRoomId={}, hostUserId={}, chatRoomMemberId={}",
+                chatRoomId, hostUserId, chatRoomMemberId);
+
+        // 1. 채팅방 존재 확인
+        chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 방장 권한 확인
+        boolean isHost = chatRoomMemberRepository.isHostOfRoom(chatRoomId, hostUserId);
+        if (!isHost) {
+            log.warn("방장이 아닌 사용자의 강퇴 시도: chatRoomId={}, userId={}", chatRoomId, hostUserId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_HOST_ONLY);
+        }
+
+        // 3. 강퇴 대상 멤버 조회
+        ChatRoomMember targetMember = chatRoomMemberRepository
+                .findByChatRoomMemberIdAndKickedAtIsNull(chatRoomMemberId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_MEMBER_NOT_FOUND));
+
+        // 4. 같은 채팅방인지 확인
+        if (!targetMember.getChatRoomId().equals(chatRoomId)) {
+            log.warn("다른 채팅방의 멤버 강퇴 시도: chatRoomId={}, targetChatRoomId={}",
+                    chatRoomId, targetMember.getChatRoomId());
+            throw new ApiException(ErrorCode.CHAT_MEMBER_NOT_FOUND);
+        }
+
+        // 5. 방장 자신 강퇴 불가
+        if (targetMember.getUserId().equals(hostUserId)) {
+            log.warn("방장 자신을 강퇴 시도: chatRoomId={}, userId={}", chatRoomId, hostUserId);
+            throw new ApiException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        // 6. 방장 강퇴 불가
+        if (targetMember.getRole() == MemberRole.HOST) {
+            log.warn("방장을 강퇴 시도: chatRoomId={}, targetUserId={}", chatRoomId, targetMember.getUserId());
+            throw new ApiException(ErrorCode.CHAT_ROOM_HOST_ONLY);
+        }
+
+        // 7. 강퇴 처리 (kicked_at 설정)
+        targetMember.kick();
+        chatRoomMemberRepository.save(targetMember);
+        log.info("멤버 강퇴 완료: chatRoomId={}, kickedUserId={}", chatRoomId, targetMember.getUserId());
+
+        // TODO: 8. 시스템 메시지 생성 ("OO님이 강퇴되었습니다")
+    }
+
+    // 채팅방 종료
+    @Transactional
+    public void closeChatRoom(Long chatRoomId, Long userId) {
+        log.info("채팅방 종료 시작: chatRoomId={}, userId={}", chatRoomId, userId);
+
+        // 1. 채팅방 존재 확인
+        ChatRoom chatRoom = chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 방장 권한 확인
+        boolean isHost = chatRoomMemberRepository.isHostOfRoom(chatRoomId, userId);
+        if (!isHost) {
+            log.warn("방장이 아닌 사용자의 방 종료 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_HOST_ONLY);
+        }
+
+        // 3. 이미 종료된 방인지 확인
+        if (chatRoom.getStatus() == RoomStatus.CLOSED) {
+            log.warn("이미 종료된 채팅방: chatRoomId={}", chatRoomId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND);
+        }
+
+        // 4. 채팅방 종료
+        chatRoom.close();
+        chatRoomRepository.save(chatRoom);
+        log.info("채팅방 종료 완료: chatRoomId={}", chatRoomId);
+
+        // TODO: 5. 시스템 메시지 생성 ("채팅방이 종료되었습니다")
+    }
 }
