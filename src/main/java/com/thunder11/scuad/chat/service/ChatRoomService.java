@@ -1,10 +1,15 @@
 package com.thunder11.scuad.chat.service;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import com.thunder11.scuad.chat.domain.type.RoomStatus;
+import com.thunder11.scuad.jobposting.domain.AiApplicantEvaluation;
+import com.thunder11.scuad.jobposting.domain.JobApplication;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
+import com.thunder11.scuad.jobposting.repository.AiApplicationEvaluationRepository;
+import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
 import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -33,6 +38,35 @@ public class ChatRoomService {
     private final ChatRoomRepository chatRoomRepository;
     private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final JobMasterRepository jobMasterRepository;
+    private final JobApplicationRepository jobApplicationRepository;
+    private final AiApplicationEvaluationRepository aiApplicantEvaluationRepository;
+
+    // 사용자의 AI 평가 점수 조회 (private 헬퍼 메서드)
+    private Integer getMyScore(Long userId, Long jobMasterId) {
+        // 지원서 조회
+        Optional<JobApplication> jobApplicationOpt = jobApplicationRepository
+                .findByUserIdAndJobMasterId(userId, jobMasterId);
+
+        if (jobApplicationOpt.isEmpty()) {
+            log.debug("지원서 없음: userId={}, jobMasterId={}", userId, jobMasterId);
+            return 0; // 지원하지 않은 경우 0점
+        }
+
+        // AI 평가 점수 조회
+        Optional<AiApplicantEvaluation> evaluationOpt = aiApplicantEvaluationRepository
+                .findByJobApplicationId(jobApplicationOpt.get().getId());
+
+        if (evaluationOpt.isEmpty()) {
+            log.debug("AI 평가 없음: jobApplicationId={}", jobApplicationOpt.get().getId());
+            return 0; // AI 평가가 없는 경우 0점
+        }
+
+        Integer score = evaluationOpt.get().getOverallScore();
+        log.debug("AI 점수 조회 완료: userId={}, jobMasterId={}, score={}",
+                userId, jobMasterId, score);
+
+        return score;
+    }
 
     // 공고별 채팅방 목록 조회 (커서 기반 페이징)
     public ChatRoomListResponse getChatRoomsByJobPosting(
@@ -50,8 +84,8 @@ public class ChatRoomService {
             throw new ApiException(ErrorCode.JOB_POSTING_NOT_FOUND);
         }
 
-        // TODO: 2. 내 공고 점수 조회 (JobPosting 연동 후 구현)
-        Integer myScore = 0; // 임시값
+        // 2. 내 공고 점수 조회
+        Integer myScore = getMyScore(userId, jobMasterId);
 
         // 3. 채팅방 목록 조회 (size + 1개 조회하여 다음 페이지 존재 여부 확인)
         List<ChatRoom> chatRooms = chatRoomRepository.findByJobMasterIdWithCursor(
@@ -134,8 +168,35 @@ public class ChatRoomService {
             return false;
         }
 
-        // TODO: 커트라인 점수 확인 (JobPosting 연동 후 구현)
-        // TODO: 같은 공고의 다른 방 참여 여부 확인 (JobPosting 연동 후 구현)
+        // 지원서 확인
+        Optional<JobApplication> jobApplicationOpt = jobApplicationRepository
+                .findByUserIdAndJobMasterId(userId, room.getJobMasterId());
+
+        if (jobApplicationOpt.isEmpty()) {
+            return false; // 지원하지 않은 경우
+        }
+
+        // AI 점수 확인
+        Optional<AiApplicantEvaluation> evaluationOpt = aiApplicantEvaluationRepository
+                .findByJobApplicationId(jobApplicationOpt.get().getId());
+
+        if (evaluationOpt.isEmpty()) {
+            return false; // AI 평가 없는 경우
+        }
+
+        // 커트라인 점수 확인
+        Integer myScore = evaluationOpt.get().getOverallScore();
+        if (myScore < room.getCutlineScore()) {
+            return false; // 커트라인 미달
+        }
+
+        // 같은 공고의 다른 방 참여 여부 확인
+        Optional<ChatRoomMember> otherRoomMember = chatRoomMemberRepository
+                .findByJobApplicationIdAndNotKicked(jobApplicationOpt.get().getId());
+
+        if (otherRoomMember.isPresent() && !otherRoomMember.get().getChatRoomId().equals(room.getChatRoomId())) {
+            return false; // 같은 공고 다른 방 참여 중
+        }
 
         return true;
     }
@@ -156,8 +217,35 @@ public class ChatRoomService {
             return "FULL";
         }
 
-        // TODO: 커트라인 미달 체크
-        // TODO: 같은 공고 다른 방 참여 중 체크
+        // 지원서 확인
+        Optional<JobApplication> jobApplicationOpt = jobApplicationRepository
+                .findByUserIdAndJobMasterId(userId, room.getJobMasterId());
+
+        if (jobApplicationOpt.isEmpty()) {
+            return "NO_APPLICATION"; // 지원하지 않음
+        }
+
+        // AI 점수 확인
+        Optional<AiApplicantEvaluation> evaluationOpt = aiApplicantEvaluationRepository
+                .findByJobApplicationId(jobApplicationOpt.get().getId());
+
+        if (evaluationOpt.isEmpty()) {
+            return "NO_SCORE"; // AI 평가 없음
+        }
+
+        // 커트라인 미달 체크
+        Integer myScore = evaluationOpt.get().getOverallScore();
+        if (myScore < room.getCutlineScore()) {
+            return "CUTLINE_NOT_MET"; // 커트라인 미달
+        }
+
+        // 같은 공고 다른 방 참여 중 체크
+        Optional<ChatRoomMember> otherRoomMember = chatRoomMemberRepository
+                .findByJobApplicationIdAndNotKicked(jobApplicationOpt.get().getId());
+
+        if (otherRoomMember.isPresent() && !otherRoomMember.get().getChatRoomId().equals(room.getChatRoomId())) {
+            return "ALREADY_JOINED_OTHER"; // 같은 공고 다른 방 참여 중
+        }
 
         return "AVAILABLE";
     }
@@ -178,11 +266,31 @@ public class ChatRoomService {
             throw new ApiException(ErrorCode.JOB_POSTING_NOT_FOUND);
         }
 
-        // TODO: 2. 생성자 서류 제출 확인 (JobApplication 연동 필요)
+        // 2. 생성자 지원서 조회
+        JobApplication jobApplication = jobApplicationRepository
+                .findByUserIdAndJobMasterId(userId, jobMasterId)
+                .orElseThrow(() -> {
+                    log.warn("지원서 없음: userId={}, jobMasterId={}", userId, jobMasterId);
+                    return new ApiException(ErrorCode.CHAT_ROOM_NO_APPLICATION);
+                });
 
-        // TODO: 3. 생성자 AI 점수 확인 (JobApplication 연동 필요)
+        // 3. 생성자 AI 점수 확인
+        AiApplicantEvaluation evaluation = aiApplicantEvaluationRepository
+                .findByJobApplicationId(jobApplication.getId())
+                .orElseThrow(() -> {
+                    log.warn("AI 평가 없음: jobApplicationId={}", jobApplication.getId());
+                    return new ApiException(ErrorCode.CHAT_ROOM_NO_SCORE);
+                });
 
-        // TODO: 4. 커트라인 검증 (본인 점수 이하여야 함)
+        Integer myScore = evaluation.getOverallScore();
+        log.info("방장 AI 점수: userId={}, score={}", userId, myScore);
+
+        // 4. 커트라인 검증 (본인 점수 이하여야 함)
+        if (request.getCutlineScore() > myScore) {
+            log.warn("커트라인이 본인 점수보다 높음: cutline={}, myScore={}",
+                    request.getCutlineScore(), myScore);
+            throw new ApiException(ErrorCode.CHAT_ROOM_CUTLINE_EXCEEDED);
+        }
 
         // 5. 중복 방 생성 확인
         if (chatRoomRepository.existsByJobMasterIdAndCreatedByAndDeletedAtIsNull(jobMasterId, userId)) {
@@ -202,16 +310,14 @@ public class ChatRoomService {
                 .build();
 
         ChatRoom savedChatRoom = chatRoomRepository.save(chatRoom);
-        log.info("채팅방 생성 완료: chatRoomId={}", savedChatRoom.getChatRoomId());
+        log.info("채팅방 생성 완료: chatRoomId={}, cutline={}",
+                savedChatRoom.getChatRoomId(), savedChatRoom.getCutlineScore());
 
         // 7. 방장을 멤버로 등록
-        // TODO: jobApplicationId 조회 필요 (JobApplication 연동 필요)
-        Long jobApplicationId = 1L; // 임시값
-
         ChatRoomMember hostMember = ChatRoomMember.builder()
                 .chatRoomId(savedChatRoom.getChatRoomId())
                 .userId(userId)
-                .jobApplicationId(jobApplicationId)
+                .jobApplicationId(jobApplication.getId())
                 .role(MemberRole.HOST)
                 .build();
 
@@ -300,8 +406,13 @@ public class ChatRoomService {
             throw new ApiException(ErrorCode.CHAT_ROOM_FULL);
         }
 
-        // TODO: 5. jobApplicationId 조회 (JobPosting 연동 필요)
-        Long jobApplicationId = 1L; // 임시값
+        // 5. 입장자 지원서 조회
+        JobApplication jobApplication = jobApplicationRepository
+                .findByUserIdAndJobMasterId(userId, chatRoom.getJobMasterId())
+                .orElseThrow(() -> {
+                    log.warn("지원서 없음: userId={}, jobMasterId={}", userId, chatRoom.getJobMasterId());
+                    return new ApiException(ErrorCode.CHAT_ROOM_NO_APPLICATION);
+                });
 
         // 6. 강퇴 여부 확인
         if (chatRoomMemberRepository.existsKickedMember(chatRoomId, userId)) {
@@ -309,22 +420,41 @@ public class ChatRoomService {
             throw new ApiException(ErrorCode.CHAT_MEMBER_KICKED);
         }
 
-        // TODO: 7. 같은 공고 다른 방 참여 확인
-        // Optional<ChatRoomMember> otherRoom = chatRoomMemberRepository
-        //     .findByJobApplicationIdAndNotKicked(jobApplicationId);
-        // if (otherRoom.isPresent() && !otherRoom.get().getChatRoomId().equals(chatRoomId)) {
-        //     throw new ApiException(ErrorCode.CHAT_ROOM_ALREADY_JOINED_OTHER);
-        // }
+        // 7. 같은 공고 다른 방 참여 확인
+        Optional<ChatRoomMember> otherRoomMember = chatRoomMemberRepository
+                .findByJobApplicationIdAndNotKicked(jobApplication.getId());
+
+        if (otherRoomMember.isPresent() && !otherRoomMember.get().getChatRoomId().equals(chatRoomId)) {
+            log.warn("같은 공고의 다른 방 참여 중: userId={}, otherChatRoomId={}",
+                    userId, otherRoomMember.get().getChatRoomId());
+            throw new ApiException(ErrorCode.CHAT_ROOM_ALREADY_JOINED_OTHER);
+        }
 
         // TODO: 8. 서류 제출 확인 (JobPosting 연동 필요)
 
-        // TODO: 9. 커트라인 점수 확인 (JobPosting 연동 필요)
+        // 9. 커트라인 점수 확인
+        AiApplicantEvaluation evaluation = aiApplicantEvaluationRepository
+                .findByJobApplicationId(jobApplication.getId())
+                .orElseThrow(() -> {
+                    log.warn("AI 평가 없음: jobApplicationId={}", jobApplication.getId());
+                    return new ApiException(ErrorCode.CHAT_ROOM_NO_SCORE);
+                });
+
+        Integer myScore = evaluation.getOverallScore();
+        if (myScore < chatRoom.getCutlineScore()) {
+            log.warn("커트라인 미달: userId={}, myScore={}, cutline={}",
+                    userId, myScore, chatRoom.getCutlineScore());
+            throw new ApiException(ErrorCode.CHAT_ROOM_CUTLINE_NOT_MET);
+        }
+
+        log.info("커트라인 통과: userId={}, myScore={}, cutline={}",
+                userId, myScore, chatRoom.getCutlineScore());
 
         // 10. 멤버 등록
         ChatRoomMember member = ChatRoomMember.builder()
                 .chatRoomId(chatRoomId)
                 .userId(userId)
-                .jobApplicationId(jobApplicationId)
+                .jobApplicationId(jobApplication.getId())
                 .role(MemberRole.MEMBER)
                 .build();
 

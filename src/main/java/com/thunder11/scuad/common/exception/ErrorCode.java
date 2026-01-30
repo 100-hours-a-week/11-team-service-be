@@ -40,6 +40,8 @@ public enum ErrorCode {
     CHAT_ROOM_NO_DOCUMENTS(HttpStatus.BAD_REQUEST, "CHAT_ROOM_NO_DOCUMENTS", "서류를 제출하지 않았습니다."),
     CHAT_ROOM_NO_SCORE(HttpStatus.BAD_REQUEST, "CHAT_ROOM_NO_SCORE", "AI 평가 점수가 없습니다."),
     CHAT_ROOM_INVALID_CUTLINE(HttpStatus.BAD_REQUEST, "CHAT_ROOM_INVALID_CUTLINE", "커트라인 점수는 본인 점수 이하여야 합니다."),
+    CHAT_ROOM_NO_APPLICATION(HttpStatus.BAD_REQUEST, "CHAT_4001", "해당 공고에 지원하지 않았습니다"),
+    CHAT_ROOM_CUTLINE_EXCEEDED(HttpStatus.BAD_REQUEST, "CHAT_4004", "커트라인은 본인 점수 이하로 설정해야 합니다"),
     CHAT_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_MEMBER_NOT_FOUND", "채팅방 멤버를 찾을 수 없습니다."),
     CHAT_MEMBER_KICKED(HttpStatus.FORBIDDEN, "CHAT_MEMBER_KICKED", "강퇴된 멤버는 입장할 수 없습니다."),
     CHAT_MESSAGE_INVALID_TYPE(HttpStatus.BAD_REQUEST, "CHAT_MESSAGE_INVALID_TYPE", "유효하지 않은 메시지 타입입니다."),
