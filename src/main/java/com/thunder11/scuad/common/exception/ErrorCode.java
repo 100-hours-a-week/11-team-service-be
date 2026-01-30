@@ -14,41 +14,7 @@ public enum ErrorCode {
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "인증이 필요합니다."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "FORBIDDEN", "권한이 없습니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "서버 오류가 발생했습니다."),
-    AI_SERVICE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "AI_SERVICE_ERROR", "AI 서비스 연동 중 오류가 발생했습니다."),
-    FILE_UPLOAD_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_UPLOAD_ERROR","파일 업로드 중 오류가 발생했습니다."),
-    ACCEPTED(HttpStatus.ACCEPTED, "ACCEPTED", "요청이 접수되어 처리 중입니다."),
-
-    // oauth 도메인 에러
-    INVALID_OAUTH_CODE(HttpStatus.BAD_REQUEST, "INVALID_OAUTH_CODE", "유효하지 않은 OAuth 인가 코드입니다."),
-    OAUTH_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "OAUTH_PROVIDER_ERROR", "OAuth 제공자 서버와의 통신에 실패했습니다."),
-    ACCESS_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "ACCESS_TOKEN_EXPIRED", "인증 토큰이 만료되었습니다. 토큰을 재발급 받아주세요."),
-    INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "INVALID_TOKEN", "유효하지 않은 인증 토큰입니다."),
-    REFRESH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "REFRESH_TOKEN_EXPIRED", "리프레시 토큰이 만료되었습니다. 다시 로그인해주세요."),
-    REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "REFRESH_TOKEN_NOT_FOUND", "리프레시 토큰을 찾을 수 없습니다."),
-    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다."),
-    KAKAO_TOKEN_REQUEST_FAILED(HttpStatus.BAD_REQUEST, "KAKAO_TOKEN_REQUEST_FAILED", "카카오 토큰 발급에 실패했습니다."),
-    KAKAO_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "KAKAO_API_ERROR", "카카오 API 호출 중 오류가 발생했습니다."),
-
-    CHAT_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_ROOM_NOT_FOUND", "채팅방을 찾을 수 없습니다."),
-    CHAT_ROOM_ALREADY_EXISTS(HttpStatus.CONFLICT, "CHAT_ROOM_ALREADY_EXISTS", "이미 해당 공고에 생성한 채팅방이 있습니다."),
-    CHAT_ROOM_FULL(HttpStatus.CONFLICT, "CHAT_ROOM_FULL", "채팅방 정원이 가득 찼습니다."),
-    CHAT_ROOM_ALREADY_JOINED(HttpStatus.CONFLICT, "CHAT_ROOM_ALREADY_JOINED", "이미 채팅방에 참여 중입니다."),
-    CHAT_ROOM_ALREADY_JOINED_OTHER(HttpStatus.CONFLICT, "CHAT_ROOM_ALREADY_JOINED_OTHER", "이미 해당 공고의 다른 채팅방에 참여 중입니다."),
-    CHAT_ROOM_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHAT_ROOM_ACCESS_DENIED", "채팅방에 접근 권한이 없습니다."),
-    CHAT_ROOM_HOST_ONLY(HttpStatus.FORBIDDEN, "CHAT_ROOM_HOST_ONLY", "방장만 사용할 수 있는 기능입니다."),
-    CHAT_ROOM_CUTLINE_NOT_MET(HttpStatus.BAD_REQUEST, "CHAT_ROOM_CUTLINE_NOT_MET", "커트라인 점수를 충족하지 못했습니다."),
-    CHAT_ROOM_NO_SCORE(HttpStatus.BAD_REQUEST, "CHAT_ROOM_NO_SCORE", "AI 평가 점수가 없습니다."),
-    CHAT_ROOM_NO_APPLICATION(HttpStatus.BAD_REQUEST, "CHAT_4001", "해당 공고에 지원하지 않았습니다"),
-    CHAT_ROOM_CUTLINE_EXCEEDED(HttpStatus.BAD_REQUEST, "CHAT_4004", "커트라인은 본인 점수 이하로 설정해야 합니다"),
-    CHAT_ROOM_NO_RESUME(HttpStatus.BAD_REQUEST, "CHAT_4005", "이력서가 제출되지 않았습니다"),
-    CHAT_ROOM_NO_PORTFOLIO(HttpStatus.BAD_REQUEST, "CHAT_4006", "포트폴리오가 제출되지 않았습니다"),
-    CHAT_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_MEMBER_NOT_FOUND", "채팅방 멤버를 찾을 수 없습니다."),
-    CHAT_MEMBER_KICKED(HttpStatus.FORBIDDEN, "CHAT_MEMBER_KICKED", "강퇴된 멤버는 입장할 수 없습니다."),
-    CHAT_MESSAGE_INVALID_TYPE(HttpStatus.BAD_REQUEST, "CHAT_MESSAGE_INVALID_TYPE", "유효하지 않은 메시지 타입입니다."),
-    CHAT_MESSAGE_EMPTY(HttpStatus.BAD_REQUEST, "CHAT_MESSAGE_EMPTY", "메시지 내용이 비어있습니다."),
-    JOB_POSTING_NOT_FOUND(HttpStatus.NOT_FOUND, "JOB_POSTING_NOT_FOUND", "채용공고를 찾을 수 없습니다."),
-    JOB_APPLICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "JOB_APPLICATION_NOT_FOUND", "지원 정보를 찾을 수 없습니다."),
-    INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "INVALID_INPUT_VALUE", "since와 cursor를 동시에 사용할 수 없습니다");
+    AI_SERVICE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "AI_SERVICE_ERROR", "AI 서비스 연동 중 오류가 발생했습니다.");
 
     private final HttpStatus status;
     private final String code;
