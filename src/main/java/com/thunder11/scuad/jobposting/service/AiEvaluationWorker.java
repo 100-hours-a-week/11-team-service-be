@@ -1,5 +1,8 @@
 package com.thunder11.scuad.jobposting.service;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionPhase;
@@ -10,11 +13,14 @@ import lombok.extern.slf4j.Slf4j;
 
 import com.thunder11.scuad.infra.ai.client.AiServiceClient;
 import com.thunder11.scuad.infra.ai.dto.request.AiEvaluationAnalysisRequest;
+import com.thunder11.scuad.infra.ai.dto.response.AiEvaluationResultResponse;
+import com.thunder11.scuad.jobposting.domain.AiApplicantEvaluation;
 import com.thunder11.scuad.jobposting.domain.AiEvalJob;
+import com.thunder11.scuad.jobposting.domain.EvaluationScore;
 import com.thunder11.scuad.jobposting.domain.JobApplication;
 import com.thunder11.scuad.jobposting.event.AiEvaluationCreateEvent;
+import com.thunder11.scuad.jobposting.repository.AiApplicationEvaluationRepository;
 import com.thunder11.scuad.jobposting.repository.AiEvalJobRepository;
-import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
 
 @Slf4j
 @Service
@@ -22,34 +28,58 @@ import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
 public class AiEvaluationWorker {
 
     private final AiEvalJobRepository aiEvalJobRepository;
+    private final AiApplicationEvaluationRepository aiApplicationEvaluationRepository;
     private final AiServiceClient aiServiceClient;
-    private final JobApplicationRepository jobApplicationRepository;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void processEvaluationAsync(AiEvaluationCreateEvent event) {
 
-        Long aiEvalJobId = event.getAiEvalJobId();
+        log.info("AI 종합 분석 작업시작: UserId={}, JobPostingId={}",
+                event.getUserId(), event.getJobPostingId());
 
-        log.info("AI 종합 분석 작업시작: JobId={}",  aiEvalJobId);
+        AiEvalJob aiEvalJob = aiEvalJobRepository
+                .findFirstByRequestedByUserIdAndJobApplicationJobMasterIdOrderByIdDesc(
+                        event.getUserId(),
+                        event.getJobPostingId())
+                .orElseThrow(() -> new IllegalStateException("AI 평가 작업을 찾을 수 없습니다."));
 
-        AiEvalJob aiEvalJob = aiEvalJobRepository.findById(aiEvalJobId).orElseThrow();
-
-        JobApplication jobApplication = jobApplicationRepository.findById(event.getJobApplicationId()).orElseThrow();
+        Long aiEvalJobId = aiEvalJob.getId();
 
         try {
             AiEvaluationAnalysisRequest request = AiEvaluationAnalysisRequest.builder()
-                    .userId(jobApplication.getUser().getUserId())
-                    .jobPostingId(jobApplication.getJobMaster().getId())
+                    .userId(String.valueOf(event.getUserId()))
+                    .jobPostingId(String.valueOf(event.getJobPostingId()))
                     .build();
 
-            aiServiceClient.analyzeEvaluation(request);
+            AiEvaluationResultResponse result = aiServiceClient.analyzeEvaluation(request);
+
+            saveEvaluationResult(aiEvalJob.getJobApplication(), result);
 
             aiEvalJob.complete();
-            log.info("AI 종합 분석 성공: JobId={}",  aiEvalJobId);
+            aiEvalJobRepository.save(aiEvalJob);
+            log.info("AI 종합 분석 성공: JobId={}", aiEvalJobId);
         } catch (Exception e) {
             log.error("AI Worker Failed: JobID={}, Msg={}", aiEvalJobId, e.getMessage());
             aiEvalJob.fail(e.getMessage());
+            aiEvalJobRepository.save(aiEvalJob);
         }
+    }
+
+    private void saveEvaluationResult(JobApplication application, AiEvaluationResultResponse result) {
+
+        List<EvaluationScore> evaluationScores = result.getCompetencyScores().stream()
+                .map(cs -> new EvaluationScore(cs.getName(), cs.getScore(), cs.getDescription()))
+                .collect(Collectors.toList());
+
+        AiApplicantEvaluation evaluation = AiApplicantEvaluation.builder()
+                .jobApplication(application)
+                .overallScore(result.getOverallScore())
+                .oneLineReview(result.getOneLineReview())
+                .feedbackDetail(result.getFeedbackDetail())
+                .comparisonScores(evaluationScores)
+                .build();
+
+        aiApplicationEvaluationRepository.save(evaluation);
     }
 }

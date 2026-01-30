@@ -7,6 +7,6 @@ import lombok.Getter;
 @AllArgsConstructor
 public class AiEvaluationCreateEvent {
 
-    private Long aiEvalJobId;
-    private Long jobApplicationId;
+    private final Long userId;
+    private final Long jobPostingId;
 }
