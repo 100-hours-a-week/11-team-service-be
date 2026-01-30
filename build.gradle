@@ -73,6 +73,10 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testImplementation 'com.h2database:h2'
 
+	// database 마이그레이션 도구
+	implementation 'org.flywaydb:flyway-core'
+	implementation 'org.flywaydb:flyway-mysql'
+
 }
 
 tasks.register('integrationTest', Test) {
