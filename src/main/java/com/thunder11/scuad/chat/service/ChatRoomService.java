@@ -8,7 +8,9 @@ import com.thunder11.scuad.chat.domain.type.RoomStatus;
 import com.thunder11.scuad.jobposting.domain.AiApplicantEvaluation;
 import com.thunder11.scuad.jobposting.domain.JobApplication;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
+import com.thunder11.scuad.jobposting.domain.type.ApplicationDocumentType;
 import com.thunder11.scuad.jobposting.repository.AiApplicationEvaluationRepository;
+import com.thunder11.scuad.jobposting.repository.ApplicationDocumentRepository;
 import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
 import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
 import org.springframework.data.domain.PageRequest;
@@ -40,6 +42,7 @@ public class ChatRoomService {
     private final JobMasterRepository jobMasterRepository;
     private final JobApplicationRepository jobApplicationRepository;
     private final AiApplicationEvaluationRepository aiApplicantEvaluationRepository;
+    private final ApplicationDocumentRepository applicationDocumentRepository;
 
     // 사용자의 AI 평가 점수 조회 (private 헬퍼 메서드)
     private Integer getMyScore(Long userId, Long jobMasterId) {
@@ -66,6 +69,29 @@ public class ChatRoomService {
                 userId, jobMasterId, score);
 
         return score;
+    }
+
+    // 서류 제출 여부 확인 (private 헬퍼 메서드)
+    private void validateDocumentsSubmitted(Long jobApplicationId, Long userId) {
+        // 이력서 제출 확인
+        boolean hasResume = applicationDocumentRepository
+                .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.RESUME);
+
+        if (!hasResume) {
+            log.warn("이력서 미제출: userId={}, jobApplicationId={}", userId, jobApplicationId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_NO_RESUME);
+        }
+
+        // 포트폴리오 제출 확인
+        boolean hasPortfolio = applicationDocumentRepository
+                .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.PORTFOLIO);
+
+        if (!hasPortfolio) {
+            log.warn("포트폴리오 미제출: userId={}, jobApplicationId={}", userId, jobApplicationId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_NO_PORTFOLIO);
+        }
+
+        log.debug("서류 제출 확인 완료: userId={}, jobApplicationId={}", userId, jobApplicationId);
     }
 
     // 공고별 채팅방 목록 조회 (커서 기반 페이징)
@@ -176,6 +202,18 @@ public class ChatRoomService {
             return false; // 지원하지 않은 경우
         }
 
+        Long jobApplicationId = jobApplicationOpt.get().getId();
+
+        // 서류 제출 확인 (이력서 + 포트폴리오 필수)
+        boolean hasResume = applicationDocumentRepository
+                .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.RESUME);
+        boolean hasPortfolio = applicationDocumentRepository
+                .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.PORTFOLIO);
+
+        if (!hasResume || !hasPortfolio) {
+            return false; // 서류 미제출
+        }
+
         // AI 점수 확인
         Optional<AiApplicantEvaluation> evaluationOpt = aiApplicantEvaluationRepository
                 .findByJobApplicationId(jobApplicationOpt.get().getId());
@@ -223,6 +261,24 @@ public class ChatRoomService {
 
         if (jobApplicationOpt.isEmpty()) {
             return "NO_APPLICATION"; // 지원하지 않음
+        }
+
+        Long jobApplicationId = jobApplicationOpt.get().getId();
+
+        // 서류 제출 확인 (이력서)
+        boolean hasResume = applicationDocumentRepository
+                .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.RESUME);
+
+        if (!hasResume) {
+            return "NO_RESUME"; // 이력서 미제출
+        }
+
+        // 서류 제출 확인 (포트폴리오)
+        boolean hasPortfolio = applicationDocumentRepository
+                .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.PORTFOLIO);
+
+        if (!hasPortfolio) {
+            return "NO_PORTFOLIO"; // 포트폴리오 미제출
         }
 
         // AI 점수 확인
@@ -274,7 +330,10 @@ public class ChatRoomService {
                     return new ApiException(ErrorCode.CHAT_ROOM_NO_APPLICATION);
                 });
 
-        // 3. 생성자 AI 점수 확인
+        // 3. 생성자 서류 제출 확인 (이력서 + 포트폴리오 필수)
+        validateDocumentsSubmitted(jobApplication.getId(), userId);
+
+        // 4. 생성자 AI 점수 확인
         AiApplicantEvaluation evaluation = aiApplicantEvaluationRepository
                 .findByJobApplicationId(jobApplication.getId())
                 .orElseThrow(() -> {
@@ -285,20 +344,20 @@ public class ChatRoomService {
         Integer myScore = evaluation.getOverallScore();
         log.info("방장 AI 점수: userId={}, score={}", userId, myScore);
 
-        // 4. 커트라인 검증 (본인 점수 이하여야 함)
+        // 5. 커트라인 검증 (본인 점수 이하여야 함)
         if (request.getCutlineScore() > myScore) {
             log.warn("커트라인이 본인 점수보다 높음: cutline={}, myScore={}",
                     request.getCutlineScore(), myScore);
             throw new ApiException(ErrorCode.CHAT_ROOM_CUTLINE_EXCEEDED);
         }
 
-        // 5. 중복 방 생성 확인
+        // 6. 중복 방 생성 확인
         if (chatRoomRepository.existsByJobMasterIdAndCreatedByAndDeletedAtIsNull(jobMasterId, userId)) {
             log.warn("이미 해당 공고에 생성한 채팅방이 있습니다: jobMasterId={}, userId={}", jobMasterId, userId);
             throw new ApiException(ErrorCode.CHAT_ROOM_ALREADY_EXISTS);
         }
 
-        // 6. 채팅방 생성
+        // 7. 채팅방 생성
         ChatRoom chatRoom = ChatRoom.builder()
                 .jobMasterId(jobMasterId)
                 .createdBy(userId)
@@ -313,7 +372,7 @@ public class ChatRoomService {
         log.info("채팅방 생성 완료: chatRoomId={}, cutline={}",
                 savedChatRoom.getChatRoomId(), savedChatRoom.getCutlineScore());
 
-        // 7. 방장을 멤버로 등록
+        // 8. 방장을 멤버로 등록
         ChatRoomMember hostMember = ChatRoomMember.builder()
                 .chatRoomId(savedChatRoom.getChatRoomId())
                 .userId(userId)
@@ -324,7 +383,7 @@ public class ChatRoomService {
         chatRoomMemberRepository.save(hostMember);
         log.info("방장 멤버 등록 완료: userId={}, chatRoomMemberId={}", userId, hostMember.getChatRoomMemberId());
 
-        // TODO: 8. 시스템 메시지 생성 ("채팅방이 생성되었습니다")
+        // TODO: 9. 시스템 메시지 생성 ("채팅방이 생성되었습니다")
 
         return savedChatRoom.getChatRoomId();
     }
@@ -430,7 +489,8 @@ public class ChatRoomService {
             throw new ApiException(ErrorCode.CHAT_ROOM_ALREADY_JOINED_OTHER);
         }
 
-        // TODO: 8. 서류 제출 확인 (JobPosting 연동 필요)
+        // 8. 서류 제출 확인 (이력서 + 포트폴리오 필수)
+        validateDocumentsSubmitted(jobApplication.getId(), userId);
 
         // 9. 커트라인 점수 확인
         AiApplicantEvaluation evaluation = aiApplicantEvaluationRepository
