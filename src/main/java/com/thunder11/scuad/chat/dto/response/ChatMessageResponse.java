@@ -34,6 +34,7 @@ public class ChatMessageResponse {
         private String fileName;
         private String fileUrl;
         private Long fileSize;
+        private String contentType;
     }
 
     // 엔티티로부터 생성하는 팩토리 메서드
