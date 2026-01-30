@@ -7,8 +7,8 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: ${DDL_AUTO:validate}
-    show-sql: ${SHOW_SQL:true}
+      ddl-auto: validate
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
@@ -44,6 +44,14 @@ spring:
         static: ${AWS_REGION:ap-northeast-2}
       s3:
         bucket: ${AWS_S3_BUCKET:default-bucket}
+
+    flyway: 
+      enabled: true
+      baseline-on-migrate: false
+      baseline-version: 0
+      locations:
+        - classpath:db/migration
+        - classpath:db/seed
 
 kakao:
   client-id: ${KAKAO_CLIENT_ID:default-client-id}
