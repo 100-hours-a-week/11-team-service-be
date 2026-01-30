@@ -20,6 +20,7 @@ public class ChatRoomDetailResponse {
     private Integer cutlineScore;
     private Integer currentParticipants;
     private Integer maxParticipants;
+    private String hostNickname;
     private String preferredConditions;
     private RoomStatus status;
 

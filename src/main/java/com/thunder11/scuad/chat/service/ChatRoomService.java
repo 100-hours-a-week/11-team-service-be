@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import com.thunder11.scuad.auth.repository.UserRepository;
 import com.thunder11.scuad.chat.domain.type.RoomStatus;
 import com.thunder11.scuad.jobposting.domain.AiApplicantEvaluation;
 import com.thunder11.scuad.jobposting.domain.JobApplication;
@@ -44,6 +45,7 @@ public class ChatRoomService {
     private final JobApplicationRepository jobApplicationRepository;
     private final AiApplicationEvaluationRepository aiApplicationEvaluationRepository;;
     private final ApplicationDocumentRepository applicationDocumentRepository;
+    private final UserRepository userRepository;
 
     // 사용자의 AI 평가 점수 조회 (private 헬퍼 메서드)
     private Integer getMyScore(Long userId, Long jobMasterId) {
@@ -100,8 +102,9 @@ public class ChatRoomService {
         // 현재 인원 수 조회
         long currentParticipants = chatRoomMemberRepository.countByChatRoomIdAndKickedAtIsNull(room.getChatRoomId());
 
-        // 방장 정보 조회 (TODO: User 도메인 연동 후 닉네임 가져오기)
-        String hostNickname = "방장"; // 임시값
+        // 방장 닉네임 조회
+        String hostNickname = userRepository.findNicknameByUserId(room.getCreatedBy())
+                .orElse("알 수 없음");
 
         // 입장 가능 여부 및 상태를 한 번에 판단
         JoinEligibility eligibility = determineJoinEligibility(room, currentParticipants, userId);
@@ -361,6 +364,10 @@ public class ChatRoomService {
                 .jobTitle(jobMaster.getJobTitle())
                 .build();
 
+        // 5. 방장 닉네임 조회
+        String hostNickname = userRepository.findNicknameByUserId(chatRoom.getCreatedBy())
+                .orElse("알 수 없음");
+
         // 5. 응답 생성
         ChatRoomDetailResponse response = ChatRoomDetailResponse.builder()
                 .chatRoomId(chatRoom.getChatRoomId())
@@ -369,6 +376,7 @@ public class ChatRoomService {
                 .cutlineScore(chatRoom.getCutlineScore())
                 .currentParticipants((int) memberCount)
                 .maxParticipants(chatRoom.getMaxParticipants())
+                .hostNickname(hostNickname)
                 .preferredConditions(chatRoom.getPreferredConditions())
                 .status(chatRoom.getStatus())
                 .jobMaster(jobMasterSummary)
