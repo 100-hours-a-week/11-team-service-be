@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import com.thunder11.scuad.chat.domain.type.RoomStatus;
+import com.thunder11.scuad.jobposting.domain.JobMaster;
+import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +32,7 @@ public class ChatRoomService {
 
     private final ChatRoomRepository chatRoomRepository;
     private final ChatRoomMemberRepository chatRoomMemberRepository;
+    private final JobMasterRepository jobMasterRepository;
 
     // 공고별 채팅방 목록 조회 (커서 기반 페이징)
     public ChatRoomListResponse getChatRoomsByJobPosting(
@@ -41,7 +44,11 @@ public class ChatRoomService {
         log.info("채팅방 목록 조회 시작: jobMasterId={}, userId={}, cursor={}, size={}",
                 jobMasterId, userId, cursor, size);
 
-        // TODO: 1. jobMasterId 존재 여부 확인 (JobPosting 연동 후 구현)
+        // 1. jobMasterId 존재 여부 확인
+        if (!jobMasterRepository.existsByIdNotDeleted(jobMasterId)) {
+            log.warn("존재하지 않는 공고: jobMasterId={}", jobMasterId);
+            throw new ApiException(ErrorCode.JOB_POSTING_NOT_FOUND);
+        }
 
         // TODO: 2. 내 공고 점수 조회 (JobPosting 연동 후 구현)
         Integer myScore = 0; // 임시값
@@ -165,7 +172,11 @@ public class ChatRoomService {
         log.info("채팅방 생성 시작: jobMasterId={}, userId={}, roomName={}",
                 jobMasterId, userId, request.getRoomName());
 
-        // TODO: 1. 공고 존재 확인 (JobPosting 도메인 연동 필요)
+        // 1. 공고 존재 확인
+        if (!jobMasterRepository.existsByIdNotDeleted(jobMasterId)) {
+            log.warn("존재하지 않는 공고: jobMasterId={}", jobMasterId);
+            throw new ApiException(ErrorCode.JOB_POSTING_NOT_FOUND);
+        }
 
         // TODO: 2. 생성자 서류 제출 확인 (JobApplication 연동 필요)
 
@@ -231,11 +242,14 @@ public class ChatRoomService {
         // 3. 현재 인원 수 조회
         long memberCount = chatRoomMemberRepository.countByChatRoomIdAndKickedAtIsNull(chatRoomId);
 
-        // TODO: 4. 공고 정보 조회 (JobPosting 연동 필요)
+        // 4. 공고 정보 조회
+        JobMaster jobMaster = jobMasterRepository.findByIdWithDetails(chatRoom.getJobMasterId())
+                .orElseThrow(() -> new ApiException(ErrorCode.JOB_POSTING_NOT_FOUND));
+
         ChatRoomDetailResponse.JobMasterSummary jobMasterSummary = ChatRoomDetailResponse.JobMasterSummary.builder()
-                .jobMasterId(chatRoom.getJobMasterId())
-                .companyName("회사명") // 임시값
-                .jobTitle("직무명") // 임시값
+                .jobMasterId(jobMaster.getId())
+                .companyName(jobMaster.getCompany().getName())
+                .jobTitle(jobMaster.getJobTitle())
                 .build();
 
         // 5. 응답 생성
