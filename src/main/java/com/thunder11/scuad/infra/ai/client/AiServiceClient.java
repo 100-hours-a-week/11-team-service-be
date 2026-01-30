@@ -14,8 +14,6 @@ import com.thunder11.scuad.common.exception.ErrorCode;
 import com.thunder11.scuad.infra.ai.dto.request.AiJobAnalysisRequest;
 import com.thunder11.scuad.infra.ai.dto.response.AiApiResponse;
 import com.thunder11.scuad.infra.ai.dto.response.AiJobAnalysisResponse;
-import com.thunder11.scuad.infra.ai.dto.request.AiEvaluationAnalysisRequest;
-import com.thunder11.scuad.infra.ai.dto.response.AiEvaluationResultResponse;
 
 @Slf4j
 @Component
@@ -34,8 +32,7 @@ public class AiServiceClient {
                 .uri(aiServiceUrl + "/api/v1/job-posting/analyze")
                 .bodyValue(request)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<AiApiResponse<AiJobAnalysisResponse>>() {
-                })
+                .bodyToMono(new ParameterizedTypeReference<AiApiResponse<AiJobAnalysisResponse>>() {})
                 .block();
 
         validateAiResponse(response);
@@ -63,26 +60,7 @@ public class AiServiceClient {
             String msg = (response != null && response.getError() != null)
                     ? response.getError().getMessage()
                     : "Unknown AI Error";
-            throw new ApiException(ErrorCode.AI_SERVICE_ERROR, "AI 분석 실패: " + msg);
-        }
-    }
-
-    public AiEvaluationResultResponse analyzeEvaluation(AiEvaluationAnalysisRequest request) {
-        log.info("AI 분석 요청: User={}, Job={}", request.getUserId(), request.getJobPostingId());
-
-        try {
-            AiApiResponse<AiEvaluationResultResponse> response = webClient.post()
-                    .uri(aiServiceUrl + "/api/v1/applicant/evaluate")
-                    .bodyValue(request)
-                    .retrieve()
-                    .bodyToMono(new ParameterizedTypeReference<AiApiResponse<AiEvaluationResultResponse>>() {
-                    })
-                    .block();
-
-            log.info("AI 분석 결과: {}", response.getData());
-            return response.getData();
-        } catch (Exception e) {
-            throw new ApiException(ErrorCode.AI_SERVICE_ERROR, "AI 호출 실패: " + e.getMessage());
+            throw new ApiException(ErrorCode.AI_SERVICE_ERROR, "AI 분석 실패: "+ msg);
         }
     }
 }

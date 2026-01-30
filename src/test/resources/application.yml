@@ -5,28 +5,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
-  cloud:
-    aws:
-      credentials:
-        access-key: test-access-key
-        secret-key: test-secret-key
-      region:
-        static: ap-northeast-2
-      s3:
-        bucket: test-bucket
 
 ai:
   service:
     url: http://localhost:8000
-
-jwt:
-  secret: test-jwt-secret-key-for-testing-purposes-only-minimum-256-bits
-  access-token-expiration: 3600000
-  refresh-token-expiration: 604800000
-
-kakao:
-  client-id: test-client-id
-  client-secret: test-client-secret
-  redirect-uri: http://localhost:8080/login/oauth2/code/kakao
-  token-uri: https://kauth.kakao.com/oauth/token
-  user-info-uri: https://kapi.kakao.com/v2/user/me

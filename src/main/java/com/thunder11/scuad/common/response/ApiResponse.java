@@ -24,4 +24,5 @@ public class ApiResponse <T>{
     public static ApiResponse<Void> of(int status, String code, String message) {
         return new ApiResponse<>(status, code, message, null);
     }
+
 }

@@ -38,7 +38,8 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
                 .where(
                         cursorCondition(condition.getCursor(), condition.getSort()),
                         eqStatus(condition.getStatus()),
-                        containsKeyword(condition.getKeyword()))
+                        containsKeyword(condition.getKeyword())
+                )
                 .orderBy(getOrderSpecifier(condition.getSort()))
                 .limit(condition.getSize())
                 .fetch();
@@ -58,20 +59,17 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
 
         return ids.stream()
                 .map(resultMap::get)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private BooleanExpression eqStatus(String status) {
-        if ("CLOSED".equalsIgnoreCase(status))
-            return jobMaster.status.eq(JobStatus.CLOSED);
-        if ("OPEN".equalsIgnoreCase(status))
-            return jobMaster.status.eq(JobStatus.OPEN);
+        if ("CLOSED".equalsIgnoreCase(status)) return jobMaster.status.eq(JobStatus.CLOSED);
+        if ("OPEN".equalsIgnoreCase(status)) return jobMaster.status.eq(JobStatus.OPEN);
         return null;
     }
 
     private BooleanExpression containsKeyword(String keyword) {
-        if (!StringUtils.hasText(keyword))
-            return null;
+        if (!StringUtils.hasText(keyword)) return null;
         return jobMaster.jobTitle.contains(keyword)
                 .or(company.name.contains(keyword));
     }
@@ -84,8 +82,7 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
     }
 
     private BooleanExpression cursorCondition(Long cursorId, String sort) {
-        if (cursorId == null)
-            return null;
+        if (cursorId == null) return null;
 
         if ("DEADLINE_ASC".equalsIgnoreCase(sort)) {
             LocalDate cursorEndDate = queryFactory
@@ -94,8 +91,7 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
                     .where(jobMaster.id.eq(cursorId))
                     .fetchOne();
 
-            if (cursorEndDate == null)
-                return null;
+            if (cursorEndDate == null) return null;
 
             return jobMaster.endDate.gt(cursorEndDate)
                     .or(jobMaster.endDate.eq(cursorEndDate).and(jobMaster.id.lt(cursorId)));
