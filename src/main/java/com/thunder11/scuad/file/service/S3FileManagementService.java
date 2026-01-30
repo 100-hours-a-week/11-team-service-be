@@ -17,7 +17,7 @@ import lombok.RequiredArgsConstructor;
 import com.thunder11.scuad.common.exception.ApiException;
 import com.thunder11.scuad.common.exception.ErrorCode;
 import com.thunder11.scuad.file.domain.FileObject;
-import com.thunder11.scuad.file.repository.FileObjcetRepository;
+import com.thunder11.scuad.file.repository.FileObjectRepository;
 
 @Slf4j
 @Service
@@ -25,7 +25,7 @@ import com.thunder11.scuad.file.repository.FileObjcetRepository;
 public class S3FileManagementService implements FileStorageService {
 
     private final S3Template s3Template;
-    private final FileObjcetRepository fileObjcetRepository;
+    private final FileObjectRepository fileObjectRepository;
 
     @Value("${spring.cloud.aws.s3.bucket}")
     private String bucket;
@@ -57,6 +57,6 @@ public class S3FileManagementService implements FileStorageService {
                 .checksum(null)
                 .build();
 
-        return fileObjcetRepository.save(fileObject);
+        return fileObjectRepository.save(fileObject);
     }
 }
