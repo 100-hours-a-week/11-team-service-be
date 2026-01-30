@@ -236,7 +236,15 @@ public class ChatMessageService {
             throw new ApiException(ErrorCode.CHAT_MESSAGE_INVALID_TYPE);
         }
 
-        // TODO: 6. 파일 존재 여부 확인 (File 도메인 연동 필요)
+        // 6. 파일 존재 여부 확인
+        if (request.getMessageType() == MessageType.FILE) {
+            if (!fileObjectRepository.existsByIdAndNotDeleted(request.getFileId())) {
+                log.warn("존재하지 않는 파일로 메시지 전송 시도: chatRoomId={}, userId={}, fileId={}",
+                        chatRoomId, userId, request.getFileId());
+                throw new ApiException(ErrorCode.FILE_NOT_FOUND);
+            }
+        }
+
 
         // 7. 메시지 생성
         ChatMessage message = ChatMessage.builder()
