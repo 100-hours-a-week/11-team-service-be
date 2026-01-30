@@ -30,6 +30,32 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-northeast-2
 
+      - name: Setup WireGuard VPN
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wireguard
+
+          # Private key 파일 생성
+          echo "${{ secrets.WG_PRIVATE_KEY }}" > privatekey
+          chmod 600 privatekey
+
+          # WireGuard 인터페이스 설정
+          sudo ip link add dev wg0 type wireguard
+          sudo ip address add dev wg0 ${{ secrets.WG_CLIENT_IP }}
+          sudo wg set wg0 \
+            private-key privatekey \
+            peer ${{ secrets.WG_SERVER_PUBLIC_KEY }} \
+            allowed-ips ${{ secrets.WG_ALLOWED_IPS }} \
+            endpoint ${{ secrets.WG_ENDPOINT }}
+          sudo ip link set up dev wg0
+
+          # 라우팅 추가 (VPN 네트워크 대역)
+          sudo ip route add ${{ secrets.WG_ALLOWED_IPS }} dev wg0 || true
+
+          # 연결 확인
+          sudo wg show
+          rm -f privatekey
+
       - name: Get timestamp (KST)
         id: timestamp
         run: echo "timestamp=$(TZ='Asia/Seoul' date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
@@ -160,6 +186,12 @@ jobs:
         if: steps.health_check.outcome == 'failure'
         run: exit 1
 
+      - name: Disconnect WireGuard VPN
+        if: always()
+        run: |
+          sudo ip link set down dev wg0 || true
+          sudo ip link delete dev wg0 || true
+
   # ----------------------------
   # 2. Main → Prod 서버 배포
   # ----------------------------
@@ -174,6 +206,32 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-northeast-2
+
+      - name: Setup WireGuard VPN
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wireguard
+
+          # Private key 파일 생성
+          echo "${{ secrets.WG_PRIVATE_KEY }}" > privatekey
+          chmod 600 privatekey
+
+          # WireGuard 인터페이스 설정
+          sudo ip link add dev wg0 type wireguard
+          sudo ip address add dev wg0 ${{ secrets.WG_CLIENT_IP }}
+          sudo wg set wg0 \
+            private-key privatekey \
+            peer ${{ secrets.WG_SERVER_PUBLIC_KEY }} \
+            allowed-ips ${{ secrets.WG_ALLOWED_IPS }} \
+            endpoint ${{ secrets.WG_ENDPOINT }}
+          sudo ip link set up dev wg0
+
+          # 라우팅 추가 (VPN 네트워크 대역)
+          sudo ip route add ${{ secrets.WG_ALLOWED_IPS }} dev wg0 || true
+
+          # 연결 확인
+          sudo wg show
+          rm -f privatekey
 
       - name: Get timestamp (KST)
         id: timestamp
@@ -308,3 +366,9 @@ jobs:
       - name: Fail workflow if health check failed
         if: steps.health_check.outcome == 'failure'
         run: exit 1
+
+      - name: Disconnect WireGuard VPN
+        if: always()
+        run: |
+          sudo ip link set down dev wg0 || true
+          sudo ip link delete dev wg0 || true
