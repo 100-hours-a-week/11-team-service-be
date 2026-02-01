@@ -5,7 +5,9 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import com.thunder11.scuad.auth.repository.UserRepository;
+import com.thunder11.scuad.chat.domain.ChatMessage;
 import com.thunder11.scuad.chat.domain.type.RoomStatus;
+import com.thunder11.scuad.chat.repository.ChatMessageRepository;
 import com.thunder11.scuad.jobposting.domain.AiApplicantEvaluation;
 import com.thunder11.scuad.jobposting.domain.JobApplication;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
@@ -46,6 +48,7 @@ public class ChatRoomService {
     private final AiApplicationEvaluationRepository aiApplicationEvaluationRepository;;
     private final ApplicationDocumentRepository applicationDocumentRepository;
     private final UserRepository userRepository;
+    private final ChatMessageRepository chatMessageRepository;
 
     // 사용자의 AI 평가 점수 조회 (private 헬퍼 메서드)
     private Integer getMyScore(Long userId, Long jobMasterId) {
@@ -330,7 +333,13 @@ public class ChatRoomService {
         chatRoomMemberRepository.save(hostMember);
         log.info("방장 멤버 등록 완료: userId={}, chatRoomMemberId={}", userId, hostMember.getChatRoomMemberId());
 
-        // TODO: 9. 시스템 메시지 생성 ("채팅방이 생성되었습니다")
+        // 9. 시스템 메시지 생성 ("채팅방이 생성되었습니다")
+        ChatMessage systemMessage = ChatMessage.createSystemMessage(
+                savedChatRoom.getChatRoomId(),
+                "채팅방이 생성되었습니다."
+        );
+        chatMessageRepository.save(systemMessage);
+        log.info("생성 시스템 메시지 생성 완료: chatRoomId={}", savedChatRoom.getChatRoomId());
 
         return savedChatRoom.getChatRoomId();
     }
@@ -474,7 +483,15 @@ public class ChatRoomService {
         log.info("채팅방 입장 완료: chatRoomId={}, userId={}, chatRoomMemberId={}",
                 chatRoomId, userId, member.getChatRoomMemberId());
 
-        // TODO: 11. 시스템 메시지 생성 ("OO님이 입장했습니다")
+        // 11. 시스템 메시지 생성 ("OO님이 입장했습니다")
+        String nickname = userRepository.findNicknameByUserId(userId)
+                .orElse("사용자");
+        ChatMessage systemMessage = ChatMessage.createSystemMessage(
+                chatRoomId,
+                nickname + "님이 입장했습니다."
+        );
+        chatMessageRepository.save(systemMessage);
+        log.info("입장 시스템 메시지 생성 완료: chatRoomId={}, userId={}", chatRoomId, userId);
     }
 
     // 채팅방 퇴장
@@ -497,12 +514,23 @@ public class ChatRoomService {
             throw new ApiException(ErrorCode.CHAT_ROOM_HOST_ONLY);
         }
 
-        // 4. 멤버 삭제
+        // 4. 닉네임 조회 (삭제 전에 조회해야 함)
+        String nickname = userRepository.findNicknameByUserId(userId)
+                .orElse("사용자");
+
+        // 5. 멤버 삭제
         chatRoomMemberRepository.delete(member);
         log.info("채팅방 퇴장 완료: chatRoomId={}, userId={}, chatRoomMemberId={}",
                 chatRoomId, userId, member.getChatRoomMemberId());
 
-        // TODO: 5. 시스템 메시지 생성 ("OO님이 퇴장했습니다")
+        // 6. 시스템 메시지 생성 ("OO님이 퇴장했습니다")
+        ChatMessage systemMessage = ChatMessage.createSystemMessage(
+                chatRoomId,
+                nickname + "님이 퇴장했습니다."
+        );
+
+        chatMessageRepository.save(systemMessage);
+        log.info("퇴장 시스템 메시지 생성 완료: chatRoomId={}, userId={}", chatRoomId, userId);
     }
 
     // 멤버 강퇴
@@ -546,12 +574,23 @@ public class ChatRoomService {
             throw new ApiException(ErrorCode.CHAT_ROOM_HOST_ONLY);
         }
 
-        // 7. 강퇴 처리 (kicked_at 설정)
+        // 7. 닉네임 조회 (강퇴 전에 조회)
+        String nickname = userRepository.findNicknameByUserId(targetMember.getUserId())
+                .orElse("사용자");
+
+        // 8. 강퇴 처리 (kicked_at 설정)
         targetMember.kick();
         chatRoomMemberRepository.save(targetMember);
         log.info("멤버 강퇴 완료: chatRoomId={}, kickedUserId={}", chatRoomId, targetMember.getUserId());
 
-        // TODO: 8. 시스템 메시지 생성 ("OO님이 강퇴되었습니다")
+        // 9. 시스템 메시지 생성 ("OO님이 강제 퇴장되었습니다")
+        ChatMessage systemMessage = ChatMessage.createSystemMessage(
+                chatRoomId,
+                nickname + "님이 강제 퇴장되었습니다."
+        );
+        chatMessageRepository.save(systemMessage);
+        log.info("강퇴 시스템 메시지 생성 완료: chatRoomId={}, kickedUserId={}",
+                chatRoomId, targetMember.getUserId());
     }
 
     // 채팅방 종료
@@ -581,6 +620,12 @@ public class ChatRoomService {
         chatRoomRepository.save(chatRoom);
         log.info("채팅방 종료 완료: chatRoomId={}", chatRoomId);
 
-        // TODO: 5. 시스템 메시지 생성 ("채팅방이 종료되었습니다")
+        // 5. 시스템 메시지 생성 ("채팅방이 종료되었습니다")
+        ChatMessage systemMessage = ChatMessage.createSystemMessage(
+                chatRoomId,
+                "채팅방이 종료되었습니다."
+        );
+        chatMessageRepository.save(systemMessage);
+        log.info("종료 시스템 메시지 생성 완료: chatRoomId={}", chatRoomId);
     }
 }
