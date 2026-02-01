@@ -71,3 +71,6 @@ ai:
 
 server:
   port: ${SERVER_PORT:8080}
+
+app:
+  frontend-url: ${APP_FRONTEND_URL:http://localhost:3000}
