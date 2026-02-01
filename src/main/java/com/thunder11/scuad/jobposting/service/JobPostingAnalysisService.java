@@ -7,7 +7,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Map;
+
 import java.util.Optional;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -24,6 +24,7 @@ import com.thunder11.scuad.infra.ai.dto.request.AiJobAnalysisRequest;
 import com.thunder11.scuad.infra.ai.dto.response.AiJobAnalysisResponse;
 import com.thunder11.scuad.jobposting.domain.Company;
 import com.thunder11.scuad.jobposting.domain.CompanyAlias;
+import com.thunder11.scuad.jobposting.domain.EvaluationCriteria;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.JobMasterSkill;
 import com.thunder11.scuad.jobposting.domain.JobPost;
@@ -148,14 +149,11 @@ public class JobPostingAnalysisService {
             endDate = parseDate(aiData.getRecruitmentPeriod().getEndDate());
         }
 
-        List<Map<String, Object>> criteriaList = null;
+        List<EvaluationCriteria> criteriaList = null;
         if (aiData.getEvaluationCriteria() != null) {
             criteriaList = new java.util.ArrayList<>();
             for (AiJobAnalysisResponse.EvaluationCriteria c : aiData.getEvaluationCriteria()) {
-                Map<String, Object> map = new java.util.HashMap<>();
-                map.put("name", c.getName());
-                map.put("description", c.getDescription());
-                criteriaList.add(map);
+                criteriaList.add(new EvaluationCriteria(c.getName(), c.getDescription()));
             }
         }
 

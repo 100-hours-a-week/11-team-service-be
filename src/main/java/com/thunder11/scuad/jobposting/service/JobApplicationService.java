@@ -35,15 +35,15 @@ public class JobApplicationService {
     private final JopApplicationAnalysisService analysisService;
 
     @Transactional
-    public Long apply(Long userId, Long jobPostingId, MultipartFile resume, MultipartFile portfolio) {
+    public Long apply(Long userId, Long jobMasterId, MultipartFile resume, MultipartFile portfolio) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없습니다."));
 
-        JobMaster jobMaster = jobMasterRepository.findById(jobPostingId)
+        JobMaster jobMaster = jobMasterRepository.findById(jobMasterId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고를 찾을 수 없습니다."));
 
         Optional<JobApplication> existingApplication = jobApplicationRepository.findByUserUserIdAndJobMasterId(userId,
-                jobPostingId);
+                jobMasterId);
         if (existingApplication.isPresent()) {
             return existingApplication.get().getId();
         }
