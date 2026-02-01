@@ -4,7 +4,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -75,7 +74,7 @@ public class JobMaster extends BaseTimeEntity {
 
         @Column(name = "evaluation_criteria", columnDefinition = "json")
         @JdbcTypeCode(SqlTypes.JSON)
-        private List<Map<String, Object>> evaluationCriteria;
+        private List<EvaluationCriteria> evaluationCriteria;
 
         @Enumerated(EnumType.STRING)
         @Column(name = "status", nullable = false, length = 20)
@@ -98,4 +97,8 @@ public class JobMaster extends BaseTimeEntity {
 
         @Column(name = "deleted_at")
         private LocalDateTime deletedAt;
+
+        public void updateEvaluationCriteria(List<EvaluationCriteria> evaluationCriteria) {
+                this.evaluationCriteria = evaluationCriteria;
+        }
 }

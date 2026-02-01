@@ -81,12 +81,12 @@ public class JobApplicationController {
 
         @PostMapping()
         public ApiResponse<Long> apply(
-                        @RequestParam("jobPostingId") Long jobPostingId,
+                        @RequestParam("jobPostingId") Long jobMasterId,
                         @RequestParam("resume") MultipartFile resume,
                         @RequestParam(value = "portfolio", required = false) MultipartFile portfolio,
                         @AuthenticationPrincipal UserPrincipal principal) {
 
-                Long applicationId = jobApplicationService.apply(principal.getUserId(), jobPostingId, resume,
+                Long applicationId = jobApplicationService.apply(principal.getUserId(), jobMasterId, resume,
                                 portfolio);
 
                 return ApiResponse.of(200, "APPLY_SUCCESS", "지원서가 성공적으로 제출되었습니다.", applicationId);

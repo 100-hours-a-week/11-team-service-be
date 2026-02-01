@@ -29,6 +29,16 @@ public class AiEvaluationResultResponse {
     @JsonProperty("feedback_detail")
     private String feedbackDetail;
 
+    @JsonProperty("evaluation_criteria")
+    private List<EvaluationCriteria> evaluationCriteria;
+
+    @Getter
+    @NoArgsConstructor
+    public static class EvaluationCriteria {
+        private String name;
+        private String description;
+    }
+
     @Getter
     @NoArgsConstructor
     @ToString

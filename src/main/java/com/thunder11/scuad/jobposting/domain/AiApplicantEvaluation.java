@@ -52,8 +52,8 @@ public class AiApplicantEvaluation extends BaseTimeEntity {
 
     @Builder
     public AiApplicantEvaluation(JobApplication jobApplication, Integer overallScore,
-                                 String oneLineReview, String feedbackDetail,
-                                 List<EvaluationScore> comparisonScores) {
+            String oneLineReview, String feedbackDetail,
+            List<EvaluationScore> comparisonScores) {
         this.jobApplication = jobApplication;
         this.overallScore = overallScore;
         this.oneLineReview = oneLineReview;
