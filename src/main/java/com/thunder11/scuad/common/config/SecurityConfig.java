@@ -1,7 +1,12 @@
 package com.thunder11.scuad.common.config;
 
+import java.util.Arrays;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.thunder11.scuad.common.exception.ErrorCode;
+import com.thunder11.scuad.common.response.ApiResponse;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -13,8 +18,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
-import org.springframework.beans.factory.annotation.Value;
 
 import lombok.RequiredArgsConstructor;
 
@@ -28,9 +31,7 @@ import com.thunder11.scuad.auth.security.JwtAuthenticationFilter;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-
-    @Value("${app.frontend-url}")
-    private String frontendUrl;
+    private final ObjectMapper objectMapper;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -57,6 +58,24 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
 
+                // 여기에 추가!
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            ErrorCode errorCode = ErrorCode.UNAUTHORIZED;
+
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType("application/json;charset=UTF-8");
+
+                            ApiResponse<Object> apiResponse = ApiResponse.of(
+                                    errorCode.getStatus().value(),
+                                    errorCode.getCode(),
+                                    errorCode.getMessage(),
+                                    null
+                            );
+
+                            response.getWriter().write(objectMapper.writeValueAsString(apiResponse));
+                        })
+                )
                 // 기본 로그인 폼 비활성화 (OAuth만 사용)
                 .formLogin(AbstractHttpConfigurer::disable)
 
@@ -69,16 +88,37 @@ public class SecurityConfig {
         return http.build();
     }
 
+     // CORS 설정
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(frontendUrl));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
+
+        // 허용할 Origin 목록 (개발 + 운영)
+        configuration.setAllowedOrigins(Arrays.asList(
+                "http://localhost:3000",      // 로컬 개발 환경
+                "http://localhost:8080",      // 로컬 백엔드 (테스트용)
+                "https://scuad.kr",           // 운영: www 없는 도메인
+                "https://www.scuad.kr"        // 운영: www 있는 도메인
+        ));
+
+        // 허용할 HTTP 메서드
+        configuration.setAllowedMethods(Arrays.asList(
+                "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
+        ));
+
+        // 허용할 헤더 (모든 헤더 허용)
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+
+        // 인증 정보 포함 허용 (쿠키, Authorization 헤더)
         configuration.setAllowCredentials(true);
 
+        // Preflight 요청 캐싱 시간 (1시간)
+        configuration.setMaxAge(3600L);
+
+        // 모든 경로에 CORS 설정 적용
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
+
         return source;
     }
 }
