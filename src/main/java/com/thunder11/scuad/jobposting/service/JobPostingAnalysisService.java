@@ -6,6 +6,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+
 import java.util.Optional;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -22,6 +24,7 @@ import com.thunder11.scuad.infra.ai.dto.request.AiJobAnalysisRequest;
 import com.thunder11.scuad.infra.ai.dto.response.AiJobAnalysisResponse;
 import com.thunder11.scuad.jobposting.domain.Company;
 import com.thunder11.scuad.jobposting.domain.CompanyAlias;
+import com.thunder11.scuad.jobposting.domain.EvaluationCriteria;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.JobMasterSkill;
 import com.thunder11.scuad.jobposting.domain.JobPost;
@@ -96,7 +99,7 @@ public class JobPostingAnalysisService {
             return JobAnalysisResultResponse.builder()
                     .jobMasterId(jobMaster.getId())
                     .jobPostingId(existingPost.getId())
-                    .isExisting(true) // 프론트엔드가 이 값을 보고 "이미 등록된 공고" 팝업을 띄움
+                    .isExisting(true)
                     .companyName(jobMaster.getCompany().getName())
                     .jobTitle(existingPost.getRawJobTitle())
                     .mainTasks(jobMaster.getMainTasks())
@@ -126,8 +129,7 @@ public class JobPostingAnalysisService {
             JobPost conflictedPost = jobPostRepository.findBySourceUrlHashAndDeletedAtIsNull(sourceUrlHash)
                     .orElseThrow(() -> new ApiException(
                             ErrorCode.INTERNAL_ERROR,
-                            "동시성 충돌이 발생했으나 데이터를 찾을 수 없습니다."
-                    ));
+                            "동시성 충돌이 발생했으나 데이터를 찾을 수 없습니다."));
 
             return JobAnalysisResultResponse.builder()
                     .jobMasterId(conflictedPost.getJobMaster().getId())
@@ -138,7 +140,7 @@ public class JobPostingAnalysisService {
     }
 
     private JobAnalysisResultResponse createNewJobEntry(String url, String urlHash, String fingerprint, Company company,
-                                                        AiJobAnalysisResponse aiData, Long userId) {
+            AiJobAnalysisResponse aiData, Long userId) {
         LocalDate startDate = null;
         LocalDate endDate = null;
 
@@ -147,11 +149,20 @@ public class JobPostingAnalysisService {
             endDate = parseDate(aiData.getRecruitmentPeriod().getEndDate());
         }
 
+        List<EvaluationCriteria> criteriaList = null;
+        if (aiData.getEvaluationCriteria() != null) {
+            criteriaList = new java.util.ArrayList<>();
+            for (AiJobAnalysisResponse.EvaluationCriteria c : aiData.getEvaluationCriteria()) {
+                criteriaList.add(new EvaluationCriteria(c.getName(), c.getDescription()));
+            }
+        }
+
         JobMaster jobMaster = JobMaster.builder()
                 .company(company)
                 .jobTitle(aiData.getJobTitle().trim())
                 .mainTasks(aiData.getMainResponsibilities())
                 .aiSummary(aiData.getAiSummary())
+                .evaluationCriteria(criteriaList)
                 .startDate(startDate)
                 .endDate(endDate)
                 .status(determineStatus(endDate))
@@ -226,7 +237,7 @@ public class JobPostingAnalysisService {
                 .orElseGet(() -> companyRepository.save(new Company(normalizedName, officialDomain)));
 
         if (sourceDomain != null && !sourceDomain.isBlank()) {
-            if(!companyAliasRepository.existsByCompanyAndAliasNormalized(company, normalizedName)) {
+            if (!companyAliasRepository.existsByCompanyAndAliasNormalized(company, normalizedName)) {
                 companyAliasRepository.save(new CompanyAlias(company, sourceDomain, rawCompanyName, normalizedName));
             }
         }
@@ -273,7 +284,8 @@ public class JobPostingAnalysisService {
     }
 
     private String normalizeUrl(String url) {
-        if (url == null) return "";
+        if (url == null)
+            return "";
 
         String trimmed = url.trim();
         if (trimmed.endsWith("/")) {

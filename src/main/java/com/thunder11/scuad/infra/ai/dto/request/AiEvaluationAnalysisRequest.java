@@ -1,5 +1,7 @@
 package com.thunder11.scuad.infra.ai.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.Builder;
 import lombok.Getter;
 
@@ -7,6 +9,9 @@ import lombok.Getter;
 @Builder
 public class AiEvaluationAnalysisRequest {
 
-    private Long userId;
-    private Long jobPostingId;
+    @JsonProperty("user_id")
+    private String userId;
+
+    @JsonProperty("job_posting_id")
+    private String jobPostingId;
 }

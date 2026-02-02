@@ -1,10 +1,14 @@
 package com.thunder11.scuad.chat.service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.thunder11.scuad.auth.repository.UserRepository;
 import com.thunder11.scuad.chat.domain.type.MessageType;
 import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
+import com.thunder11.scuad.file.repository.FileObjectRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +36,45 @@ public class ChatMessageService {
     private final ChatMessageRepository chatMessageRepository;
     private final ChatRoomRepository chatRoomRepository;
     private final ChatRoomMemberRepository chatRoomMemberRepository;
+    private final UserRepository userRepository;
+    private final FileObjectRepository fileObjectRepository;
+
+    private record FileInfo(Long fileId, String fileName, String contentType, Long fileSize) {
+    }
+    // ChatMessage -> ChatMessageResponse 변환
+    private ChatMessageResponse convertToResponse(ChatMessage message, Map<Long, String> nicknameMap, Map<Long, FileInfo> fileInfoMap) {
+        // 발신자 닉네임 조회
+        String senderNickname;
+        if (message.getSenderId() == null) {
+            senderNickname = "시스템";
+        } else {
+            senderNickname = nicknameMap.getOrDefault(message.getSenderId(), "알 수 없음");
+        }
+
+        // 파일 정보 조회
+        ChatMessageResponse.FileInfo fileInfo = null;
+        if (message.getFileId() != null) {
+            FileInfo info = fileInfoMap.get(message.getFileId());
+            if (info != null) {
+                fileInfo = ChatMessageResponse.FileInfo.builder()
+                        .fileId(info.fileId)
+                        .fileName(info.fileName)
+                        .fileSize(info.fileSize)
+                        .contentType(info.contentType)
+                        .build();
+            }
+        }
+
+        return ChatMessageResponse.builder()
+                .messageId(message.getMessageId())
+                .senderId(message.getSenderId())
+                .senderNickname(senderNickname)
+                .messageType(message.getMessageType())
+                .content(message.getContent())
+                .file(fileInfo)
+                .createdAt(message.getSentAt())
+                .build();
+    }
 
     // 채팅 메시지 목록 조회 (커서 기반 페이징 + 폴링)
     public ChatMessageListResponse getMessages(
@@ -99,41 +142,55 @@ public class ChatMessageService {
             pagination = PaginationResponse.of(nextCursor, hasNext, messages.size());
         }
 
-        // 6. ChatMessage -> ChatMessageResponse 변환
+        // 6. 발신자 닉네임 일괄 조회 (N+1 문제 해결)
+        List<Long> senderIds = messages.stream()
+                .map(ChatMessage::getSenderId)
+                .filter(senderId -> senderId != null) // SYSTEM 메시지 제외
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<Long, String> nicknameMap = new HashMap<>();
+        if (!senderIds.isEmpty()) {
+            List<Object[]> nicknames = userRepository.findNicknamesByUserIds(senderIds);
+            nicknameMap = nicknames.stream()
+                    .collect(Collectors.toMap(
+                            arr -> (Long) arr[0],
+                            arr -> (String) arr[1]
+                    ));
+        }
+
+        // 7. 파일 정보 일괄 조회 (N+1 문제 해결) - 추가
+        List<Long> fileIds = messages.stream()
+                .map(ChatMessage::getFileId)
+                .filter(fileId -> fileId != null) // 파일 없는 메시지 제외
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<Long, FileInfo> fileInfoMap = new HashMap<>();
+        if (!fileIds.isEmpty()) {
+            List<Object[]> fileInfos = fileObjectRepository.findFileInfosByIds(fileIds);
+            fileInfoMap = fileInfos.stream()
+                    .collect(Collectors.toMap(
+                            arr -> (Long) arr[0],
+                            arr -> new FileInfo(
+                                    (Long) arr[0],      // fileId
+                                    (String) arr[1],    // fileName
+                                    (String) arr[2],    // contentType
+                                    (Long) arr[3]       // fileSize
+                            )
+                    ));
+        }
+
+        // 8. ChatMessage -> ChatMessageResponse 변환
+        Map<Long, String> finalNicknameMap = nicknameMap;
+        Map<Long, FileInfo> finalFileInfoMap = fileInfoMap;
         List<ChatMessageResponse> messageResponses = messages.stream()
-                .map(this::convertToResponse)
+                .map(message -> convertToResponse(message, finalNicknameMap, finalFileInfoMap))
                 .collect(Collectors.toList());
 
         log.info("메시지 목록 조회 완료: 총 {}개, 폴링={}", messageResponses.size(), isPolling);
 
         return ChatMessageListResponse.of(messageResponses, pagination);
-    }
-
-    // ChatMessage -> ChatMessageResponse 변환
-    private ChatMessageResponse convertToResponse(ChatMessage message) {
-        // TODO: User 도메인 연동하여 실제 닉네임 조회
-        String senderNickname = message.getSenderId() != null ? "사용자" : "시스템";
-
-        // TODO: File 도메인 연동하여 파일 정보 조회
-        ChatMessageResponse.FileInfo fileInfo = null;
-        if (message.getFileId() != null) {
-            fileInfo = ChatMessageResponse.FileInfo.builder()
-                    .fileId(message.getFileId())
-                    .fileName("파일명") // 임시값
-                    .fileUrl("파일URL") // 임시값
-                    .fileSize(0L) // 임시값
-                    .build();
-        }
-
-        return ChatMessageResponse.builder()
-                .messageId(message.getMessageId())
-                .senderId(message.getSenderId())
-                .senderNickname(senderNickname)
-                .messageType(message.getMessageType())
-                .content(message.getContent())
-                .file(fileInfo)
-                .createdAt(message.getSentAt())
-                .build();
     }
 
     // 메시지 전송
@@ -179,7 +236,15 @@ public class ChatMessageService {
             throw new ApiException(ErrorCode.CHAT_MESSAGE_INVALID_TYPE);
         }
 
-        // TODO: 6. 파일 존재 여부 확인 (File 도메인 연동 필요)
+        // 6. 파일 존재 여부 확인
+        if (request.getMessageType() == MessageType.FILE) {
+            if (!fileObjectRepository.existsByIdAndNotDeleted(request.getFileId())) {
+                log.warn("존재하지 않는 파일로 메시지 전송 시도: chatRoomId={}, userId={}, fileId={}",
+                        chatRoomId, userId, request.getFileId());
+                throw new ApiException(ErrorCode.FILE_NOT_FOUND);
+            }
+        }
+
 
         // 7. 메시지 생성
         ChatMessage message = ChatMessage.builder()
@@ -193,7 +258,29 @@ public class ChatMessageService {
         ChatMessage savedMessage = chatMessageRepository.save(message);
         log.info("메시지 전송 완료: messageId={}", savedMessage.getMessageId());
 
-        // 8. 응답 생성
-        return convertToResponse(savedMessage);
+        // 8. 발신자 닉네임 조회
+        String senderNickname = userRepository.findNicknameByUserId(userId)
+                .orElse("알 수 없음");
+
+        // 9. 응답 생성
+        Map<Long, String> nicknameMap = new HashMap<>();
+        nicknameMap.put(userId, senderNickname);
+
+        // 10. 파일 정보 조회
+        Map<Long, FileInfo> fileInfoMap = new HashMap<>();
+        if (savedMessage.getFileId() != null) {
+            fileObjectRepository.findFileInfoById(savedMessage.getFileId())
+                    .ifPresent(arr -> {
+                        FileInfo info = new FileInfo(
+                                (Long) arr[0],      // fileId
+                                (String) arr[1],    // fileName
+                                (String) arr[2],    // contentType
+                                (Long) arr[3]       // fileSize
+                        );
+                        fileInfoMap.put(info.fileId, info);
+                    });
+        }
+
+        return convertToResponse(savedMessage, nicknameMap, fileInfoMap);
     }
 }

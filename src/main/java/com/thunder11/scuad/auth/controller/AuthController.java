@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.servlet.view.RedirectView;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.beans.factory.annotation.Value;
 
 import com.thunder11.scuad.auth.dto.LoginResponse;
 import com.thunder11.scuad.auth.service.AuthService;
@@ -28,11 +29,14 @@ public class AuthController {
 
     private final AuthService authService;
 
+    @Value("${app.frontend-url}")
+    private String frontendUrlBase;
+
     // 카카오 로그인 시작 (카카오 인증 페이지로 리다이렉트)
     // 프론트엔드가 이 엔드포인트를 호출하면 카카오 OAuth 페이지로 이동
     @GetMapping("/login")
     public RedirectView startKakaoLogin(
-            @RequestParam(required = false) String state  // CSRF 방지용 (선택)
+            @RequestParam(required = false) String state // CSRF 방지용 (선택)
     ) {
         // 카카오 OAuth 인증 URL 생성
         String kakaoAuthUrl = authService.getKakaoAuthUrl(state);
@@ -46,8 +50,8 @@ public class AuthController {
     // 인가 코드를 받아서 JWT 토큰 발급
     @GetMapping("/callback")
     public RedirectView handleKakaoCallback(
-            @RequestParam String code,  // 카카오 인가 코드
-            @RequestParam(required = false) String state  // CSRF 방지용 (선택)
+            @RequestParam String code, // 카카오 인가 코드
+            @RequestParam(required = false) String state // CSRF 방지용 (선택)
     ) {
         log.info("카카오 콜백 처리 시작: code={}", code.substring(0, 10) + "...");
 
@@ -57,7 +61,7 @@ public class AuthController {
         // 프론트엔드로 리다이렉트 (JWT 토큰 전달)
         // TODO: 프론트엔드 URL은 환경변수로 관리 필요
         String frontendUrl = UriComponentsBuilder
-                .fromUriString("http://localhost:3000/auth/callback")  // 프론트엔드 콜백 URL
+                .fromUriString(frontendUrlBase + "/auth/callback") // 프론트엔드 콜백 URL
                 .queryParam("accessToken", loginResponse.getAccessToken())
                 .queryParam("refreshToken", loginResponse.getRefreshToken())
                 .queryParam("expiresIn", loginResponse.getExpiresIn())
@@ -72,8 +76,7 @@ public class AuthController {
     // Refresh Token을 받아서 새로운 Access Token과 Refresh Token 발급
     @PostMapping("/refresh")
     public TokenRefreshResponse refreshToken(
-            @Valid @RequestBody RefreshTokenRequest request
-    ) {
+            @Valid @RequestBody RefreshTokenRequest request) {
         log.info("토큰 재발급 요청: refreshToken={}", request.getRefreshToken().substring(0, 10) + "...");
 
         // Refresh Token으로 새 토큰 발급
