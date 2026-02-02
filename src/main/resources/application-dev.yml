@@ -12,3 +12,6 @@ spring:
 
   flyway: 
       enabled: false
+
+app:
+  frontend-url: ${APP_FRONTEND_URL:https://dev.scuad.kr}
