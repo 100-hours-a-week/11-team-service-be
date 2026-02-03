@@ -53,6 +53,11 @@ spring:
         - classpath:db/migration
         - classpath:db/seed
 
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
 kakao:
   client-id: ${KAKAO_CLIENT_ID:default-client-id}
   client-secret: ${KAKAO_CLIENT_SECRET:default-client-secret}
