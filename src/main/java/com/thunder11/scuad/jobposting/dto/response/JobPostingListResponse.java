@@ -11,9 +11,6 @@ import lombok.Getter;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.type.JobStatus;
 
-
-
-
 @Getter
 @Builder
 public class JobPostingListResponse {
@@ -23,10 +20,10 @@ public class JobPostingListResponse {
     private List<String> skills;
     private JobStatus status;
 
-    @JsonFormat(shape =  JsonFormat.Shape.STRING, pattern ="yyyy.MM.dd")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy.MM.dd")
     private LocalDate startDate;
 
-    @JsonFormat(shape =  JsonFormat.Shape.STRING, pattern ="yyyy.MM.dd")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy.MM.dd")
     private LocalDate endDate;
 
     private int currentGroupCount;

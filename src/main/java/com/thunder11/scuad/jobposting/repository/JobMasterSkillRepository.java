@@ -6,8 +6,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.thunder11.scuad.jobposting.domain.JobMasterSkill;
+import com.thunder11.scuad.jobposting.domain.JobMasterSkillId;
 
-public interface JobMasterSkillRepository extends JpaRepository<JobMasterSkill, Long> {
+public interface JobMasterSkillRepository extends JpaRepository<JobMasterSkill, JobMasterSkillId> {
 
     @Modifying
     @Query("DELETE FROM JobMasterSkill jms WHERE jms.id.jobMasterId = :jobMasterId")
