@@ -147,15 +147,23 @@ public class ChatRoomController {
         );
     }
 
-    // 메시지 전송
-    @PostMapping("/chat-rooms/{chatRoomId}/messages")
+    // 메시지 전송 (multipart/form-data 지원)
+    @PostMapping(value = "/chat-rooms/{chatRoomId}/messages", consumes = {"multipart/form-data"})
     public ApiResponse<ChatMessageResponse> sendMessage(
             @PathVariable Long chatRoomId,
-            @Valid @RequestBody MessageSendRequest request,
+            @RequestParam("messageType") String messageType,
+            @RequestParam(value = "content", required = false) String content,
+            @RequestParam(value = "file", required = false) org.springframework.web.multipart.MultipartFile file,
             @AuthenticationPrincipal UserPrincipal userPrincipal
     ) {
-        log.info("POST /api/v1/chat-rooms/{}/messages - messageType={}, userId={}",
-                chatRoomId, request.getMessageType(), userPrincipal.getUserId());
+        log.info("POST /api/v1/chat-rooms/{}/messages - messageType={}, content={}, userId={}",
+                chatRoomId, messageType, content, userPrincipal.getUserId());
+
+        // DTO 생성 (String -> MessageType 변환)
+        MessageSendRequest request = MessageSendRequest.builder()
+                .messageType(com.thunder11.scuad.chat.domain.type.MessageType.valueOf(messageType.toUpperCase()))
+                .content(content)
+                .build();
 
         ChatMessageResponse response = chatMessageService.sendMessage(
                 chatRoomId,
