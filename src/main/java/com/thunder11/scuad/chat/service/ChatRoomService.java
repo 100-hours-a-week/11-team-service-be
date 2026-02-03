@@ -78,8 +78,9 @@ public class ChatRoomService {
     }
 
     // 서류 제출 여부 확인 (private 헬퍼 메서드)
+    // 수정 근거: 이력서는 필수이지만 포트폴리오는 선택 제출이므로 이력서만 검증
     private void validateDocumentsSubmitted(Long jobApplicationId, Long userId) {
-        // 이력서 제출 확인
+        // 이력서 제출 확인 (필수)
         boolean hasResume = applicationDocumentRepository
                 .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.RESUME);
 
@@ -88,16 +89,8 @@ public class ChatRoomService {
             throw new ApiException(ErrorCode.CHAT_ROOM_NO_RESUME);
         }
 
-        // 포트폴리오 제출 확인
-        boolean hasPortfolio = applicationDocumentRepository
-                .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.PORTFOLIO);
-
-        if (!hasPortfolio) {
-            log.warn("포트폴리오 미제출: userId={}, jobApplicationId={}", userId, jobApplicationId);
-            throw new ApiException(ErrorCode.CHAT_ROOM_NO_PORTFOLIO);
-        }
-
-        log.debug("서류 제출 확인 완료: userId={}, jobApplicationId={}", userId, jobApplicationId);
+        // 포트폴리오는 선택 제출이므로 검증하지 않음
+        log.debug("서류 제출 확인 완료 (이력서): userId={}, jobApplicationId={}", userId, jobApplicationId);
     }
 
     // ChatRoom -> ChatRoomSummaryResponse 변환
@@ -160,7 +153,7 @@ public class ChatRoomService {
 
         Long jobApplicationId = jobApplicationOpt.get().getId();
 
-        // 5. 서류 제출 확인 (이력서)
+        // 5. 서류 제출 확인 (이력서만 필수, 포트폴리오는 선택)
         boolean hasResume = applicationDocumentRepository
                 .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.RESUME);
 
@@ -168,15 +161,9 @@ public class ChatRoomService {
             return JoinEligibility.unavailable("NO_RESUME");
         }
 
-        // 6. 서류 제출 확인 (포트폴리오)
-        boolean hasPortfolio = applicationDocumentRepository
-                .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.PORTFOLIO);
+        // 포트폴리오는 선택 제출이므로 검증하지 않음
 
-        if (!hasPortfolio) {
-            return JoinEligibility.unavailable("NO_PORTFOLIO");
-        }
-
-        // 7. AI 점수 확인
+        // 6. AI 점수 확인
         Optional<AiApplicantEvaluation> evaluationOpt = aiApplicationEvaluationRepository
                 .findByJobApplicationId(jobApplicationId);
 
@@ -184,13 +171,13 @@ public class ChatRoomService {
             return JoinEligibility.unavailable("NO_SCORE");
         }
 
-        // 8. 커트라인 점수 확인
+        // 7. 커트라인 점수 확인
         Integer myScore = evaluationOpt.get().getOverallScore();
         if (myScore < room.getCutlineScore()) {
             return JoinEligibility.unavailable("CUTLINE_NOT_MET");
         }
 
-        // 9. 같은 공고의 다른 방 참여 여부 확인
+        // 8. 같은 공고의 다른 방 참여 여부 확인
         Optional<ChatRoomMember> otherRoomMember = chatRoomMemberRepository
                 .findByJobApplicationIdAndNotKicked(jobApplicationId);
 
@@ -280,7 +267,7 @@ public class ChatRoomService {
                     return new ApiException(ErrorCode.CHAT_ROOM_NO_APPLICATION);
                 });
 
-        // 3. 생성자 서류 제출 확인 (이력서 + 포트폴리오 필수)
+        // 3. 생성자 서류 제출 확인 (이력서 필수, 포트폴리오 선택)
         validateDocumentsSubmitted(jobApplication.getId(), userId);
 
         // 4. 생성자 AI 점수 확인
@@ -450,7 +437,7 @@ public class ChatRoomService {
             throw new ApiException(ErrorCode.CHAT_ROOM_ALREADY_JOINED_OTHER);
         }
 
-        // 8. 서류 제출 확인 (이력서 + 포트폴리오 필수)
+        // 8. 서류 제출 확인 (이력서 필수, 포트폴리오 선택)
         validateDocumentsSubmitted(jobApplication.getId(), userId);
 
         // 9. 커트라인 점수 확인
