@@ -17,8 +17,7 @@ public interface JobMasterRepository extends JpaRepository<JobMaster, Long>, Job
 
         @Query("SELECT jm FROM JobMaster jm " +
                         "JOIN FETCH jm.company " +
-                        "LEFT JOIN FETCH jm.jobMasterSkills jms " +
-                        "LEFT JOIN FETCH jms.skill " +
+                        "LEFT JOIN FETCH jm.jobPosts " +
                         "WHERE jm.id = :id AND jm.deletedAt IS NULL")
         Optional<JobMaster> findByIdWithDetails(@Param("id") Long id);
 

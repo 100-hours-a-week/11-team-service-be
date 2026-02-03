@@ -34,8 +34,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(
             HttpServletRequest request,
             HttpServletResponse response,
-            FilterChain filterChain
-    ) throws ServletException, IOException {
+            FilterChain filterChain) throws ServletException, IOException {
 
         try {
             // 1. Authorization 헤더에서 JWT 추출
@@ -55,12 +54,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 UserPrincipal userPrincipal = UserPrincipal.of(userId, role);
 
                 // Authentication 객체 생성
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
-                                userPrincipal,  // principal
-                                null,           // credentials (JWT는 불필요)
-                                null            // authorities (Role은 Principal에 포함)
-                        );
+                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                        userPrincipal, // principal
+                        null, // credentials (JWT는 불필요)
+                        null // authorities (Role은 Principal에 포함)
+                );
 
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
@@ -98,13 +96,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
-        String method = request.getMethod();
 
-        return (
-            method.equals("GET") && uri.startsWith("/api/v1/job-postings")
-        )
-        || uri.startsWith("/api/v1/auth/kakao")
-        || uri.equals("/api/health");
-}
+        return uri.startsWith("/api/v1/auth/kakao")
+                || uri.equals("/api/health");
+    }
 
 }
