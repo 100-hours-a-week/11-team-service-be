@@ -13,8 +13,9 @@ public class JoinEligibility {
 
     // 입장 상태 코드
     // ALREADY_JOINED, FULL, KICKED, NO_APPLICATION, NO_RESUME,
-    // NO_PORTFOLIO, NO_SCORE, CUTLINE_NOT_MET,
+    // NO_SCORE, CUTLINE_NOT_MET,
     // ALREADY_JOINED_OTHER, AVAILABLE
+    // 참고: NO_PORTFOLIO는 제거됨 (포트폴리오는 선택 제출)
     private final String status;
 
     // 입장 불가 상태 생성
