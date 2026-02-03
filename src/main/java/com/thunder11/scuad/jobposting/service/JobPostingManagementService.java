@@ -51,20 +51,22 @@ public class JobPostingManagementService {
     }
 
     @Transactional(readOnly = true)
-    public JobPostingDetailResponse getJobPostingDetail(Long jobPostingId) {
-        JobPost jobPost = jobPostRepository.findByIdAndDeletedAtIsNull(jobPostingId)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고가 존재하지 않습니다."));
-
-        JobMaster jobMaster = jobMasterRepository.findByIdWithDetails(jobPost.getJobMaster().getId())
+    public JobPostingDetailResponse getJobPostingDetail(Long jobMasterId) {
+        JobMaster jobMaster = jobMasterRepository.findByIdWithDetails(jobMasterId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고 상세 정보를 찾을 수 없습니다."));
 
         return JobPostingDetailResponse.from(jobMaster);
     }
 
     @Transactional
-    public JobPostingConfirmResponse confirmJobPosting(Long jobPostingId, Long userId, RegistrationStatus status) {
-        JobPost jobPost = jobPostRepository.findByIdAndDeletedAtIsNull(jobPostingId)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고가 존재하지 않습니다."));
+    public JobPostingConfirmResponse confirmJobPosting(Long jobMasterId, Long userId, RegistrationStatus status) {
+        JobMaster jobMaster = jobMasterRepository.findById(jobMasterId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고를 찾을 수 없습니다."));
+
+        JobPost jobPost = jobMaster.getJobPosts().stream()
+                .filter(p -> p.getRegistrationStatus() == RegistrationStatus.DRAFT)
+                .findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "확정할 수 있는 대기 상태의 공고가 없습니다."));
 
         if (!jobPost.getCreatedBy().equals(userId)) {
             throw new ApiException(ErrorCode.FORBIDDEN);
@@ -74,38 +76,33 @@ public class JobPostingManagementService {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "등록 확정은 CONFIRMED 상태로만 가능합니다");
         }
 
-        if (jobPost.getRegistrationStatus() != RegistrationStatus.DRAFT) {
-            throw new ApiException(ErrorCode.CONFLICT, "이미 확정되거나 취소된 공고입니다.");
-        }
-
         jobPost.confirmRegistration();
 
         return new JobPostingConfirmResponse(
                 jobPost.getId(),
-                jobPost.getJobMaster().getId(),
+                jobMaster.getId(),
                 jobPost.getRegistrationStatus());
     }
 
     @Transactional
-    public void deleteJobPosting(Long jobPostingId, Long userId) {
-        JobPost jobPost = jobPostRepository.findByIdAndDeletedAtIsNull(jobPostingId)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+    public void deleteJobPosting(Long jobMasterId, Long userId) {
+        JobMaster jobMaster = jobMasterRepository.findById(jobMasterId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "삭제할 공고를 찾을 수 없습니다."));
 
-        if (!jobPost.getCreatedBy().equals(userId)) {
+        boolean isOwner = jobMaster.getJobPosts().stream()
+                .anyMatch(p -> p.getCreatedBy().equals(userId));
+
+        if (!isOwner) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
 
-        Long jobMasterId = jobPost.getJobMaster().getId();
+        aiServiceClient.deleteJobAnalysis(jobMaster.getJobPosts().get(0).getAiJobId());
 
-        jobPostRepository.deleteHardById(jobPostingId);
+        jobMasterSkillRepository.deleteHardByJobMasterId(jobMasterId);
 
-        boolean hasRemainPosts = jobPostRepository.existsByJobMasterIdAndDeletedAtIsNull(jobMasterId);
+        jobMaster.getJobPosts().forEach(p -> jobPostRepository.deleteHardById(p.getId()));
 
-        if (!hasRemainPosts) {
-            jobMasterSkillRepository.deleteHardByJobMasterId(jobMasterId);
-            jobMasterRepository.deleteHardById(jobMasterId);
-        }
-
-        aiServiceClient.deleteJobAnalysis(jobPost.getAiJobId());
+        // JobMaster 삭제
+        jobMasterRepository.deleteHardById(jobMasterId);
     }
 }
