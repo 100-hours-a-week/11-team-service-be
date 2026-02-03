@@ -15,6 +15,7 @@ spring:
         default_batch_fetch_size: 100
   flyway:
     enabled: true
+    clean-disabled: false
 
   security:
     oauth2:
