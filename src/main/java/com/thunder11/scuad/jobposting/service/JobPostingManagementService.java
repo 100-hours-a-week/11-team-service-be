@@ -20,6 +20,7 @@ import com.thunder11.scuad.jobposting.dto.response.JobPostingDetailResponse;
 import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
 import com.thunder11.scuad.jobposting.dto.request.JobPostingSearchCondition;
 import com.thunder11.scuad.jobposting.dto.response.JobPostingListResponse;
+import com.thunder11.scuad.jobposting.repository.JobMasterSkillRepository;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +30,7 @@ public class JobPostingManagementService {
     private final JobPostRepository jobPostRepository;
     private final AiServiceClient aiServiceClient;
     private final JobMasterRepository jobMasterRepository;
+    private final JobMasterSkillRepository jobMasterSkillRepository;
 
     @Transactional(readOnly = true)
     public Map<String, Object> getJobPostings(JobPostingSearchCondition condition) {
@@ -100,6 +102,7 @@ public class JobPostingManagementService {
         boolean hasRemainPosts = jobPostRepository.existsByJobMasterIdAndDeletedAtIsNull(jobMasterId);
 
         if (!hasRemainPosts) {
+            jobMasterSkillRepository.deleteHardByJobMasterId(jobMasterId);
             jobMasterRepository.deleteHardById(jobMasterId);
         }
 
