@@ -52,6 +52,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/kakao/**").permitAll()
                         // 헬스 체크는 퍼블릭 허용
                         .requestMatchers("/api/health").permitAll()
+                        // 채용공고 조회는 퍼블릭 허용 (임시)
+                        .requestMatchers("/api/v1/job-postings/**").permitAll()
 
                         // 나머지 URL은 인증 필요
                         .anyRequest().authenticated()

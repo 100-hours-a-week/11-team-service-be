@@ -7,15 +7,15 @@
 
 -- User 2 (dev_kim)가 카카오 백엔드에 지원
 INSERT INTO job_applications (job_application_id, user_id, job_master_id, status, created_at, updated_at, deleted_at)
-VALUES (1, 2, 1, 'SUBMITTED', NOW(6), NOW(6), NULL);
+VALUES (1, 2, 1, 'ACTIVE', NOW(6), NOW(6), NULL);
 
 -- User 3 (frontend_park)가 토스 프론트엔드에 지원
 INSERT INTO job_applications (job_application_id, user_id, job_master_id, status, created_at, updated_at, deleted_at)
-VALUES (2, 3, 2, 'SUBMITTED', NOW(6), NOW(6), NULL);
+VALUES (2, 3, 2, 'ACTIVE', NOW(6), NOW(6), NULL);
 
 -- User 2 (dev_kim)가 당근마켓 풀스택에도 지원
 INSERT INTO job_applications (job_application_id, user_id, job_master_id, status, created_at, updated_at, deleted_at)
-VALUES (3, 2, 3, 'SUBMITTED', NOW(6), NOW(6), NULL);
+VALUES (3, 2, 3, 'ACTIVE', NOW(6), NOW(6), NULL);
 
 -- ================================================
 -- AI 지원자 평가 (AI Applicant Evaluation)
@@ -32,7 +32,7 @@ VALUES (
     85,
     '탄탄한 백엔드 기술 스택과 프로젝트 경험을 보유한 지원자입니다.',
     'Java/Spring Boot 숙련도가 높고, 마이크로서비스 아키텍처 경험이 풍부합니다. 다만 대규모 트래픽 처리 경험을 더 쌓으면 좋을 것 같습니다.',
-    '{"technical_depth": 90, "problem_solving": 85, "communication": 80, "experience": 85}',
+    '[{"name": "기술 역량", "description": "Java/Spring 숙련도 90점"}, {"name": "문제 해결 능력", "description": "시스템 설계 능력 85점"}, {"name": "커뮤니케이션", "description": "팀 협업 능력 80점"}, {"name": "경력", "description": "실무 경험 85점"}]',
     NOW(6),
     NOW(6),
     NULL
@@ -46,7 +46,7 @@ VALUES (
     78,
     'React/TypeScript 기반 프로젝트 경험이 우수한 지원자입니다.',
     'UI/UX에 대한 이해도가 높고 성능 최적화 경험이 있습니다. 디자인 시스템 구축 경험을 더 쌓으면 경쟁력이 높아질 것입니다.',
-    '{"technical_depth": 80, "ui_ux_sense": 85, "problem_solving": 75, "team_collaboration": 72}',
+    '[{"name": "기술 역량", "description": "React/TypeScript 숙련도 80점"}, {"name": "UI/UX 감각", "description": "디자인 감각 85점"}, {"name": "문제 해결", "description": "최적화 능력 75점"}, {"name": "팀 협업", "description": "커뮤니케이션 72점"}]',
     NOW(6),
     NOW(6),
     NULL
@@ -60,7 +60,7 @@ VALUES (
     82,
     '백엔드/프론트엔드 모두 다룰 수 있는 균형잡힌 개발자입니다.',
     '풀스택 역량이 우수하며 주도적으로 프로젝트를 이끌어본 경험이 있습니다. 스타트업 환경에 잘 맞는 지원자입니다.',
-    '{"technical_versatility": 85, "ownership": 88, "speed": 80, "growth_potential": 75}',
+    '[{"name": "풀스택 역량", "description": "프론트/백엔드 통합 85점"}, {"name": "주도성", "description": "프로젝트 리드 88점"}, {"name": "실행 속도", "description": "빠른 실행력 80점"}, {"name": "성장 잠재력", "description": "학습 능력 75점"}]',
     NOW(6),
     NOW(6),
     NULL

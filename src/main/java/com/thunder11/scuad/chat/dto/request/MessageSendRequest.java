@@ -2,6 +2,8 @@ package com.thunder11.scuad.chat.dto.request;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -10,6 +12,8 @@ import com.thunder11.scuad.chat.domain.type.MessageType;
 // 메시지 전송 요청
 @Getter
 @NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class MessageSendRequest {
 
     @NotNull(message = "메시지 타입은 필수입니다")
@@ -20,4 +24,9 @@ public class MessageSendRequest {
 
     // 파일 ID (FILE 타입일 때 사용)
     private Long fileId;
+
+    // String을 MessageType으로 변환하는 편의 메서드
+    public void setMessageType(String messageType) {
+        this.messageType = MessageType.valueOf(messageType);
+    }
 }
