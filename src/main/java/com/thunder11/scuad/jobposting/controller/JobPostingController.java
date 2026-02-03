@@ -64,7 +64,7 @@ public class JobPostingController {
 
     @GetMapping("/{jobMasterId}")
     public ApiResponse<JobPostingDetailResponse> getJobPosting(
-            @PathVariable("jobMasterId") long jobMasterId,
+            @PathVariable("jobMasterId") Long jobMasterId,
             @AuthenticationPrincipal UserPrincipal principal) {
         JobPostingDetailResponse result = jobPostingManagementService.getJobPostingDetail(jobMasterId);
 

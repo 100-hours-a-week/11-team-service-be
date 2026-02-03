@@ -38,12 +38,9 @@ import com.thunder11.scuad.jobposting.domain.type.RegistrationStatus;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-@Table(
-        name = "job_posts",
-        indexes = {
-                @Index(name = "idx_job_posts_job_master_id", columnList = "job_master_id")
-        }
-)
+@Table(name = "job_posts", indexes = {
+        @Index(name = "idx_job_posts_job_master_id", columnList = "job_master_id")
+})
 @SQLDelete(sql = "UPDATE job_posts SET deleted_at = CURRENT_TIMESTAMP WHERE job_post_id = ?")
 @SQLRestriction("deleted_at IS NULL")
 public class JobPost extends BaseTimeEntity {
