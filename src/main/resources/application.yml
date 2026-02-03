@@ -51,7 +51,6 @@ spring:
       baseline-version: 0
       locations:
         - classpath:db/migration
-        - classpath:db/seed
 
   servlet:
     multipart:

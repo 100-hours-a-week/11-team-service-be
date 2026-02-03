@@ -16,6 +16,9 @@ spring:
   flyway:
     enabled: true
     clean-disabled: false
+    locations:
+      - classpath:db/migration
+      - classpath:db/migration/testdata  # 로컬 환경에서만 더미 데이터 로딩
 
   security:
     oauth2:
