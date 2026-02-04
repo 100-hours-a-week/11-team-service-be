@@ -7,7 +7,7 @@ import jakarta.persistence.*;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.SQLDelete;
-import org.hibernate.annotations.Where;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.type.SqlTypes;
 
 import lombok.AccessLevel;
@@ -22,7 +22,7 @@ import com.thunder11.scuad.common.entity.BaseTimeEntity;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "ai_applicant_evaluation")
 @SQLDelete(sql = "UPDATE ai_applicant_evaluation SET deleted_at = NOW() WHERE evaluation_id = ?")
-@Where(clause = "deleted_at IS NULL")
+@SQLRestriction("deleted_at IS NULL")
 public class AiApplicantEvaluation extends BaseTimeEntity {
 
     @Id
