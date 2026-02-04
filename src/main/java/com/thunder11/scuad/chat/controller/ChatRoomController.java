@@ -121,6 +121,28 @@ public class ChatRoomController {
         );
     }
 
+    // 채팅방 멤버 목록 조회
+    @GetMapping("/chat-rooms/{chatRoomId}/members")
+    public ApiResponse<ChatRoomMemberListResponse> getChatRoomMembers(
+            @PathVariable Long chatRoomId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("GET /api/v1/chat-rooms/{}/members - userId={}",
+                chatRoomId, userPrincipal.getUserId());
+
+        ChatRoomMemberListResponse response = chatRoomService.getChatRoomMembers(
+                chatRoomId,
+                userPrincipal.getUserId()
+        );
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "SUCCESS",
+                "멤버 목록 조회 성공",
+                response
+        );
+    }
+
     // 채팅 메시지 목록 조회
     @GetMapping("/chat-rooms/{chatRoomId}/messages")
     public ApiResponse<ChatMessageListResponse> getMessages(
