@@ -31,7 +31,7 @@ public class AiServiceClient {
         log.info("AI 분석 요청 시작: {}", request.getUrl());
 
         AiApiResponse<AiJobAnalysisResponse> response = webClient.post()
-                .uri(aiServiceUrl + "/api/v1/job-posting/analyze")
+                .uri(aiServiceUrl + "/ai/api/v1/job-posting/analyze")
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<AiApiResponse<AiJobAnalysisResponse>>() {
@@ -48,7 +48,7 @@ public class AiServiceClient {
         log.info("AI 분석 데이터 비동기 삭제 요청 시작: ID={}", aiJobId);
         try {
             webClient.delete()
-                    .uri(aiServiceUrl + "/api/v1/job-posting/" + aiJobId)
+                    .uri(aiServiceUrl + "/ai/api/v1/job-posting/" + aiJobId)
                     .retrieve()
                     .toBodilessEntity()
                     .block();
@@ -72,7 +72,7 @@ public class AiServiceClient {
 
         try {
             AiApiResponse<AiEvaluationResultResponse> response = webClient.post()
-                    .uri(aiServiceUrl + "/api/v1/applicant/evaluate")
+                    .uri(aiServiceUrl + "/ai/api/v1/applicant/evaluate")
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(new ParameterizedTypeReference<AiApiResponse<AiEvaluationResultResponse>>() {
