@@ -1,0 +1,286 @@
+package com.thunder11.scuad.chat.service;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import com.thunder11.scuad.auth.repository.UserRepository;
+import com.thunder11.scuad.chat.domain.type.MessageType;
+import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
+import com.thunder11.scuad.file.repository.FileObjectRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import com.thunder11.scuad.chat.domain.ChatMessage;
+import com.thunder11.scuad.chat.dto.response.ChatMessageListResponse;
+import com.thunder11.scuad.chat.dto.response.ChatMessageResponse;
+import com.thunder11.scuad.chat.dto.response.PaginationResponse;
+import com.thunder11.scuad.chat.repository.ChatMessageRepository;
+import com.thunder11.scuad.chat.repository.ChatRoomMemberRepository;
+import com.thunder11.scuad.chat.repository.ChatRoomRepository;
+import com.thunder11.scuad.common.exception.ApiException;
+import com.thunder11.scuad.common.exception.ErrorCode;
+
+// 채팅 메시지 관련 비즈니스 로직 처리
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class ChatMessageService {
+
+    private final ChatMessageRepository chatMessageRepository;
+    private final ChatRoomRepository chatRoomRepository;
+    private final ChatRoomMemberRepository chatRoomMemberRepository;
+    private final UserRepository userRepository;
+    private final FileObjectRepository fileObjectRepository;
+
+    private record FileInfo(Long fileId, String fileName, String contentType, Long fileSize) {
+    }
+    // ChatMessage -> ChatMessageResponse 변환
+    private ChatMessageResponse convertToResponse(ChatMessage message, Map<Long, String> nicknameMap, Map<Long, FileInfo> fileInfoMap) {
+        // 발신자 닉네임 조회
+        String senderNickname;
+        if (message.getSenderId() == null) {
+            senderNickname = "시스템";
+        } else {
+            senderNickname = nicknameMap.getOrDefault(message.getSenderId(), "알 수 없음");
+        }
+
+        // 파일 정보 조회
+        ChatMessageResponse.FileInfo fileInfo = null;
+        if (message.getFileId() != null) {
+            FileInfo info = fileInfoMap.get(message.getFileId());
+            if (info != null) {
+                fileInfo = ChatMessageResponse.FileInfo.builder()
+                        .fileId(info.fileId)
+                        .fileName(info.fileName)
+                        .fileSize(info.fileSize)
+                        .contentType(info.contentType)
+                        .build();
+            }
+        }
+
+        return ChatMessageResponse.builder()
+                .messageId(message.getMessageId())
+                .senderId(message.getSenderId())
+                .senderNickname(senderNickname)
+                .messageType(message.getMessageType())
+                .content(message.getContent())
+                .file(fileInfo)
+                .createdAt(message.getSentAt())
+                .build();
+    }
+
+    // 채팅 메시지 목록 조회 (커서 기반 페이징 + 폴링)
+    public ChatMessageListResponse getMessages(
+            Long chatRoomId,
+            Long userId,
+            Long cursor,
+            Long since,
+            int size
+    ) {
+        log.info("메시지 목록 조회 시작: chatRoomId={}, userId={}, cursor={}, since={}, size={}",
+                chatRoomId, userId, cursor, since, size);
+
+        // 1. 채팅방 존재 확인
+        chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 멤버십 확인 (참여자만 메시지 조회 가능)
+        boolean isMember = chatRoomMemberRepository
+                .findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, userId)
+                .isPresent();
+
+        if (!isMember) {
+            log.warn("채팅방 멤버가 아닌 사용자의 메시지 조회 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+        }
+
+        // 3. since와 cursor 동시 사용 검증
+        if (since != null && cursor != null) {
+            log.warn("since와 cursor를 동시에 사용할 수 없습니다: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+
+        List<ChatMessage> messages;
+        boolean isPolling = (since != null);
+
+        // 4. 폴링 요청인지 과거 메시지 로드인지 구분
+        if (isPolling) {
+            // 폴링: since 이후의 최신 메시지 조회
+            messages = chatMessageRepository.findNewMessagesSince(chatRoomId, since);
+            log.info("폴링 메시지 조회 완료: {}개", messages.size());
+        } else {
+            // 과거 메시지 로드: 커서 기반 페이징
+            messages = chatMessageRepository.findMessagesByChatRoomIdWithCursor(
+                    chatRoomId,
+                    cursor,
+                    PageRequest.of(0, size + 1)
+            );
+            log.info("과거 메시지 조회 완료: {}개", messages.size());
+        }
+
+        // 5. 페이징 정보 계산 (폴링이 아닐 때만)
+        PaginationResponse pagination = null;
+
+        if (!isPolling) {
+            boolean hasNext = messages.size() > size;
+            if (hasNext) {
+                messages = messages.subList(0, size);
+            }
+
+            Long nextCursor = null;
+            if (hasNext && !messages.isEmpty()) {
+                nextCursor = messages.get(messages.size() - 1).getMessageId();
+            }
+
+            pagination = PaginationResponse.of(nextCursor, hasNext, messages.size());
+        }
+
+        // 6. 발신자 닉네임 일괄 조회 (N+1 문제 해결)
+        List<Long> senderIds = messages.stream()
+                .map(ChatMessage::getSenderId)
+                .filter(senderId -> senderId != null) // SYSTEM 메시지 제외
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<Long, String> nicknameMap = new HashMap<>();
+        if (!senderIds.isEmpty()) {
+            List<Object[]> nicknames = userRepository.findNicknamesByUserIds(senderIds);
+            nicknameMap = nicknames.stream()
+                    .collect(Collectors.toMap(
+                            arr -> (Long) arr[0],
+                            arr -> (String) arr[1]
+                    ));
+        }
+
+        // 7. 파일 정보 일괄 조회 (N+1 문제 해결) - 추가
+        List<Long> fileIds = messages.stream()
+                .map(ChatMessage::getFileId)
+                .filter(fileId -> fileId != null) // 파일 없는 메시지 제외
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<Long, FileInfo> fileInfoMap = new HashMap<>();
+        if (!fileIds.isEmpty()) {
+            List<Object[]> fileInfos = fileObjectRepository.findFileInfosByIds(fileIds);
+            fileInfoMap = fileInfos.stream()
+                    .collect(Collectors.toMap(
+                            arr -> (Long) arr[0],
+                            arr -> new FileInfo(
+                                    (Long) arr[0],      // fileId
+                                    (String) arr[1],    // fileName
+                                    (String) arr[2],    // contentType
+                                    (Long) arr[3]       // fileSize
+                            )
+                    ));
+        }
+
+        // 8. ChatMessage -> ChatMessageResponse 변환
+        Map<Long, String> finalNicknameMap = nicknameMap;
+        Map<Long, FileInfo> finalFileInfoMap = fileInfoMap;
+        List<ChatMessageResponse> messageResponses = messages.stream()
+                .map(message -> convertToResponse(message, finalNicknameMap, finalFileInfoMap))
+                .collect(Collectors.toList());
+
+        log.info("메시지 목록 조회 완료: 총 {}개, 폴링={}", messageResponses.size(), isPolling);
+
+        return ChatMessageListResponse.of(messageResponses, pagination);
+    }
+
+    // 메시지 전송
+    @Transactional
+    public ChatMessageResponse sendMessage(
+            Long chatRoomId,
+            Long userId,
+            MessageSendRequest request
+    ) {
+        log.info("메시지 전송 시작: chatRoomId={}, userId={}, messageType={}",
+                chatRoomId, userId, request.getMessageType());
+
+        // 1. 채팅방 존재 확인
+        chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 멤버십 확인 (참여자만 메시지 전송 가능)
+        boolean isMember = chatRoomMemberRepository
+                .findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, userId)
+                .isPresent();
+
+        if (!isMember) {
+            log.warn("채팅방 멤버가 아닌 사용자의 메시지 전송 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
+        }
+
+        // 3. 메시지 타입 검증
+        if (request.getMessageType() == MessageType.SYSTEM) {
+            log.warn("사용자가 시스템 메시지 전송 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_MESSAGE_INVALID_TYPE);
+        }
+
+        // 4. 메시지 내용 검증
+        if (request.getMessageType() == MessageType.TEXT &&
+                (request.getContent() == null || request.getContent().trim().isEmpty())) {
+            log.warn("빈 텍스트 메시지 전송 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_MESSAGE_EMPTY);
+        }
+
+        // 5. 파일 메시지 검증
+        if (request.getMessageType() == MessageType.FILE && request.getFileId() == null) {
+            log.warn("fileId 없는 FILE 타입 메시지: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_MESSAGE_INVALID_TYPE);
+        }
+
+        // 6. 파일 존재 여부 확인
+        if (request.getMessageType() == MessageType.FILE) {
+            if (!fileObjectRepository.existsByIdAndNotDeleted(request.getFileId())) {
+                log.warn("존재하지 않는 파일로 메시지 전송 시도: chatRoomId={}, userId={}, fileId={}",
+                        chatRoomId, userId, request.getFileId());
+                throw new ApiException(ErrorCode.FILE_NOT_FOUND);
+            }
+        }
+
+
+        // 7. 메시지 생성
+        ChatMessage message = ChatMessage.builder()
+                .chatRoomId(chatRoomId)
+                .senderId(userId)
+                .messageType(request.getMessageType())
+                .content(request.getContent())
+                .fileId(request.getFileId())
+                .build();
+
+        ChatMessage savedMessage = chatMessageRepository.save(message);
+        log.info("메시지 전송 완료: messageId={}", savedMessage.getMessageId());
+
+        // 8. 발신자 닉네임 조회
+        String senderNickname = userRepository.findNicknameByUserId(userId)
+                .orElse("알 수 없음");
+
+        // 9. 응답 생성
+        Map<Long, String> nicknameMap = new HashMap<>();
+        nicknameMap.put(userId, senderNickname);
+
+        // 10. 파일 정보 조회
+        Map<Long, FileInfo> fileInfoMap = new HashMap<>();
+        if (savedMessage.getFileId() != null) {
+            fileObjectRepository.findFileInfoById(savedMessage.getFileId())
+                    .ifPresent(arr -> {
+                        FileInfo info = new FileInfo(
+                                (Long) arr[0],      // fileId
+                                (String) arr[1],    // fileName
+                                (String) arr[2],    // contentType
+                                (Long) arr[3]       // fileSize
+                        );
+                        fileInfoMap.put(info.fileId, info);
+                    });
+        }
+
+        return convertToResponse(savedMessage, nicknameMap, fileInfoMap);
+    }
+}

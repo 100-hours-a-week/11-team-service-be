@@ -34,6 +34,21 @@ public class jobPostingController {
 
     private final JobPostingAnalysisService jobPostingAnalysisService;
     private final JobPostingManagementService jobPostingManagementService;
+    private final JopApplicationAnalysisService jopApplicationAnalysisService;
+
+    @GetMapping("/{jobMasterId}/my-application")
+    public ApiResponse<AiEvaluationResultResponse> getMyApplication(
+            @PathVariable("jobMasterId") Long jobMasterId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        if (principal == null) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED, "인증 정보가 없습니다. 다시 로그인해 주세요.");
+        }
+        AiEvaluationResultResponse result = jopApplicationAnalysisService.getMyApplicationResult(
+                principal.getUserId(),
+                jobMasterId);
+
+        return ApiResponse.of(200, "MY_APPLICATION_LOAD_SUCCESS", "내 지원 정보를 조회했습니다.", result);
+    }
 
     @GetMapping
     public ApiResponse<Map<String, Object>> getJobPostings(
@@ -43,9 +58,11 @@ public class jobPostingController {
         return ApiResponse.of(200, "JOB_POST_LIST_LOAD_SUCCESS", "채용공고 목록 조회에 성공했습니다.", result);
     }
 
-    @GetMapping("/{jobPostingId}")
-    public ApiResponse<JobPostingDetailResponse> getJobPosting(@PathVariable long jobPostingId) {
-        JobPostingDetailResponse result = jobPostingManagementService.getJobPostingDetail(jobPostingId);
+    @GetMapping("/{jobMasterId}")
+    public ApiResponse<JobPostingDetailResponse> getJobPosting(
+            @PathVariable("jobMasterId") Long jobMasterId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        JobPostingDetailResponse result = jobPostingManagementService.getJobPostingDetail(jobMasterId);
 
         return ApiResponse.of(200, "JOB_POST_LOAD_SUCCESS", "공고 분석 결과 조회 성공", result);
     }
@@ -59,22 +76,22 @@ public class jobPostingController {
         return ApiResponse.of(200, "JOB_ANALYSIS_SUCCESS","채용공고 분석이 완료되었습니다.", result);
     }
 
-    @PatchMapping("/{jobPostingId}")
+    @PatchMapping("/{jobMasterId}")
     public ApiResponse<JobPostingConfirmResponse> confirmJobPosting(
-            @PathVariable Long jobPostingId,
+            @PathVariable("jobMasterId") Long jobMasterId,
             @RequestBody @Valid JobPostingConfirmRequest request,
-            @RequestParam(value = "userId", required = false, defaultValue = "1") Long userId) {
-        JobPostingConfirmResponse result = jobPostingManagementService.confirmJobPosting(jobPostingId, userId, request.getRegistrationStatus());
+            @AuthenticationPrincipal UserPrincipal principal) {
+        JobPostingConfirmResponse result = jobPostingManagementService.confirmJobPosting(jobMasterId,
+                principal.getUserId(), request.getRegistrationStatus());
 
         return ApiResponse.of(200, "JOB_MASTER_REGISTERED","채용공고가 성공적으로 등록되었습니다.", result);
     }
 
-    @DeleteMapping("/{jobPostingId}")
+    @DeleteMapping("/{jobMasterId}")
     public ResponseEntity<Void> deleteJobPosting(
-            @PathVariable Long jobPostingId,
-            @RequestParam(value = "userId", required = false, defaultValue = "1") Long userId
-    ) {
-        jobPostingManagementService.deleteJobPosting(jobPostingId, userId);
+            @PathVariable("jobMasterId") Long jobMasterId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        jobPostingManagementService.deleteJobPosting(jobMasterId, principal.getUserId());
 
         return ResponseEntity.noContent().build();
     }

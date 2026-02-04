@@ -4,7 +4,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -40,19 +39,10 @@ import com.thunder11.scuad.jobposting.domain.type.JobStatus;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-@Table(
-        name = "job_masters",
-        indexes = {
-                @Index(
-                        name = "idx_job_masters_open_enddate",
-                        columnList = "status, end_date, job_master_id, company_id, job_title, start_date"
-                ),
-                @Index(
-                        name = "idx_job_masters_company_open_enddate",
-                        columnList = "company_id, status, end_date, job_master_id, job_title, start_date"
-                )
-        }
-)
+@Table(name = "job_masters", indexes = {
+        @Index(name = "idx_job_masters_open_enddate", columnList = "status, end_date, job_master_id, company_id, job_title, start_date"),
+        @Index(name = "idx_job_masters_company_open_enddate", columnList = "company_id, status, end_date, job_master_id, job_title, start_date")
+})
 @SQLDelete(sql = "UPDATE job_masters SET deleted_at = CURRENT_TIMESTAMP WHERE job_master_id = ?")
 @SQLRestriction("deleted_at IS NULL")
 public class JobMaster extends BaseTimeEntity {
@@ -84,7 +74,7 @@ public class JobMaster extends BaseTimeEntity {
 
     @Column(name = "evaluation_criteria", columnDefinition = "json")
     @JdbcTypeCode(SqlTypes.JSON)
-    private Map<String, Object> evaluationCriteria;
+    private List<EvaluationCriteria> evaluationCriteria;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
@@ -102,9 +92,13 @@ public class JobMaster extends BaseTimeEntity {
     private List<JobApplication> jobApplications = new ArrayList<>();
 
     @Builder.Default
-    @OneToMany(mappedBy = "jobMaster")
+    @OneToMany(mappedBy = "jobMaster", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<JobMasterSkill> jobMasterSkills = new ArrayList<>();
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
+
+    public void updateEvaluationCriteria(List<EvaluationCriteria> evaluationCriteria) {
+        this.evaluationCriteria = evaluationCriteria;
+    }
 }

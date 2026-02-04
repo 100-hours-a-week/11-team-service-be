@@ -11,9 +11,6 @@ import lombok.Getter;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.type.JobStatus;
 
-
-
-
 @Getter
 @Builder
 public class JobPostingListResponse {
@@ -23,15 +20,15 @@ public class JobPostingListResponse {
     private List<String> skills;
     private JobStatus status;
 
-    @JsonFormat(shape =  JsonFormat.Shape.STRING, pattern ="yyyy.MM.dd")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy.MM.dd")
     private LocalDate startDate;
 
-    @JsonFormat(shape =  JsonFormat.Shape.STRING, pattern ="yyyy.MM.dd")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy.MM.dd")
     private LocalDate endDate;
 
     private int currentGroupCount;
 
-    public static JobPostingListResponse from(JobMaster jobMaster) {
+    public static JobPostingListResponse of(JobMaster jobMaster, int count) {
         return JobPostingListResponse.builder()
                 .id(jobMaster.getId())
                 .companyName(jobMaster.getCompany().getName())
@@ -41,7 +38,7 @@ public class JobPostingListResponse {
                 .status(jobMaster.getStatus())
                 .startDate(jobMaster.getStartDate())
                 .endDate(jobMaster.getEndDate())
-                .currentGroupCount(0) // 추후 chat 도메인 개발 후 변경
+                .currentGroupCount(count)
                 .build();
     }
 }

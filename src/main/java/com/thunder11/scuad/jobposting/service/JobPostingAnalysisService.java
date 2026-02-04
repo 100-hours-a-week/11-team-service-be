@@ -6,6 +6,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+
 import java.util.Optional;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -22,8 +24,10 @@ import com.thunder11.scuad.infra.ai.dto.request.AiJobAnalysisRequest;
 import com.thunder11.scuad.infra.ai.dto.response.AiJobAnalysisResponse;
 import com.thunder11.scuad.jobposting.domain.Company;
 import com.thunder11.scuad.jobposting.domain.CompanyAlias;
+import com.thunder11.scuad.jobposting.domain.EvaluationCriteria;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.JobMasterSkill;
+import com.thunder11.scuad.jobposting.domain.JobMasterSkillId;
 import com.thunder11.scuad.jobposting.domain.JobPost;
 import com.thunder11.scuad.jobposting.domain.Skill;
 import com.thunder11.scuad.jobposting.domain.type.JobSourceType;
@@ -126,6 +130,14 @@ public class JobPostingAnalysisService {
             endDate = parseDate(aiData.getRecruitmentPeriod().getEndDate());
         }
 
+        List<EvaluationCriteria> criteriaList = null;
+        if (aiData.getEvaluationCriteria() != null) {
+            criteriaList = new java.util.ArrayList<>();
+            for (AiJobAnalysisResponse.EvaluationCriteria c : aiData.getEvaluationCriteria()) {
+                criteriaList.add(new EvaluationCriteria(c.getName(), c.getDescription()));
+            }
+        }
+
         JobMaster jobMaster = JobMaster.builder()
                 .company(company)
                 .jobTitle(aiData.getJobTitle().trim())
@@ -161,6 +173,7 @@ public class JobPostingAnalysisService {
                 Skill skill = resolveSkill(skillName);
 
                 JobMasterSkill jobMasterSkill = JobMasterSkill.builder()
+                        .id(new JobMasterSkillId(null, skill.getId()))
                         .jobMaster(jobMaster)
                         .skill(skill)
                         .build();
