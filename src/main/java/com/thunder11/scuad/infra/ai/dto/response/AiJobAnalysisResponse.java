@@ -44,6 +44,9 @@ public class AiJobAnalysisResponse {
     @JsonProperty("ai_summary")
     private String aiSummary;
 
+    @JsonProperty("evaluation_criteria")
+    private List<EvaluationCriteria> evaluationCriteria;
+
     @Getter
     @NoArgsConstructor
     public static class RecruitmentPeriod {
@@ -53,5 +56,12 @@ public class AiJobAnalysisResponse {
 
         @JsonProperty("end_date")
         private String endDate;
+    }
+
+    @Getter
+    @NoArgsConstructor
+    public static class EvaluationCriteria {
+        private String name;
+        private String description;
     }
 }

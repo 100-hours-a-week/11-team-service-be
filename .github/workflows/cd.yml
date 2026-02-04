@@ -30,6 +30,16 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-northeast-2
 
+      - name: Setup WireGuard VPN
+        uses: egor-tensin/setup-wireguard@v1
+        with:
+          endpoint: ${{ secrets.WG_ENDPOINT }}
+          endpoint_public_key: ${{ secrets.WG_SERVER_PUBLIC_KEY }}
+          ips: ${{ secrets.WG_CLIENT_IP }}
+          allowed_ips: ${{ secrets.WG_ALLOWED_IPS }}
+          private_key: ${{ secrets.WG_PRIVATE_KEY }}
+          keepalive: 25
+
       - name: Get timestamp (KST)
         id: timestamp
         run: echo "timestamp=$(TZ='Asia/Seoul' date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
@@ -160,6 +170,7 @@ jobs:
         if: steps.health_check.outcome == 'failure'
         run: exit 1
 
+
   # ----------------------------
   # 2. Main → Prod 서버 배포
   # ----------------------------
@@ -174,6 +185,16 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-northeast-2
+
+      - name: Setup WireGuard VPN
+        uses: egor-tensin/setup-wireguard@v1
+        with:
+          endpoint: ${{ secrets.WG_ENDPOINT }}
+          endpoint_public_key: ${{ secrets.WG_SERVER_PUBLIC_KEY }}
+          ips: ${{ secrets.WG_CLIENT_IP }}
+          allowed_ips: ${{ secrets.WG_ALLOWED_IPS }}
+          private_key: ${{ secrets.WG_PRIVATE_KEY }}
+          keepalive: 25
 
       - name: Get timestamp (KST)
         id: timestamp
@@ -308,3 +329,4 @@ jobs:
       - name: Fail workflow if health check failed
         if: steps.health_check.outcome == 'failure'
         run: exit 1
+

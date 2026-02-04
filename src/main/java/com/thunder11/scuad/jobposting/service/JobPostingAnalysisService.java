@@ -91,6 +91,27 @@ public class JobPostingAnalysisService {
 
         AiJobAnalysisResponse aiData = aiServiceClient.analyzeJob(aiRequest);
         log.info("AI 분석 데이터: {}", aiData);
+        if (aiData.isExisting() && aiData.getJobPostingId() != null) {
+            JobPost existingPost = jobPostRepository.findByIdAndDeletedAtIsNull(aiData.getJobPostingId())
+                    .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL_ERROR, "AI가 식별한 기존 공고를 찾을 수 없습니다."));
+
+            JobMaster jobMaster = existingPost.getJobMaster();
+
+            return JobAnalysisResultResponse.builder()
+                    .jobMasterId(jobMaster.getId())
+                    .jobPostingId(existingPost.getId())
+                    .isExisting(true)
+                    .companyName(jobMaster.getCompany().getName())
+                    .jobTitle(existingPost.getRawJobTitle())
+                    .mainTasks(jobMaster.getMainTasks())
+                    .skills(jobMaster.getJobMasterSkills().stream()
+                            .map(jms -> jms.getSkill().getName())
+                            .toList())
+                    .aiSummary(jobMaster.getAiSummary())
+                    .startDate(jobMaster.getStartDate())
+                    .status(jobMaster.getStatus().name())
+                    .build();
+        }
 
         String sourceDomain = extractDomain(normalizedUrl);
         Company company = resolveCompany(aiData.getCompanyName(), null, sourceDomain);
@@ -109,8 +130,7 @@ public class JobPostingAnalysisService {
             JobPost conflictedPost = jobPostRepository.findBySourceUrlHashAndDeletedAtIsNull(sourceUrlHash)
                     .orElseThrow(() -> new ApiException(
                             ErrorCode.INTERNAL_ERROR,
-                            "동시성 충돌이 발생했으나 데이터를 찾을 수 없습니다."
-                    ));
+                            "동시성 충돌이 발생했으나 데이터를 찾을 수 없습니다."));
 
             return JobAnalysisResultResponse.builder()
                     .jobMasterId(conflictedPost.getJobMaster().getId())
@@ -121,7 +141,7 @@ public class JobPostingAnalysisService {
     }
 
     private JobAnalysisResultResponse createNewJobEntry(String url, String urlHash, String fingerprint, Company company,
-                                                        AiJobAnalysisResponse aiData, Long userId) {
+            AiJobAnalysisResponse aiData, Long userId) {
         LocalDate startDate = null;
         LocalDate endDate = null;
 
@@ -143,6 +163,7 @@ public class JobPostingAnalysisService {
                 .jobTitle(aiData.getJobTitle().trim())
                 .mainTasks(aiData.getMainResponsibilities())
                 .aiSummary(aiData.getAiSummary())
+                .evaluationCriteria(criteriaList)
                 .startDate(startDate)
                 .endDate(endDate)
                 .status(determineStatus(endDate))
@@ -199,7 +220,6 @@ public class JobPostingAnalysisService {
                 .startDate(savedJobMaster.getStartDate())
                 .status(savedJobMaster.getStatus().name())
                 .build();
-
     }
 
     private String normalizeCompanyName(String rawName) {
@@ -219,7 +239,7 @@ public class JobPostingAnalysisService {
                 .orElseGet(() -> companyRepository.save(new Company(normalizedName, officialDomain)));
 
         if (sourceDomain != null && !sourceDomain.isBlank()) {
-            if(!companyAliasRepository.existsByCompanyAndAliasNormalized(company, normalizedName)) {
+            if (!companyAliasRepository.existsByCompanyAndAliasNormalized(company, normalizedName)) {
                 companyAliasRepository.save(new CompanyAlias(company, sourceDomain, rawCompanyName, normalizedName));
             }
         }
@@ -266,7 +286,8 @@ public class JobPostingAnalysisService {
     }
 
     private String normalizeUrl(String url) {
-        if (url == null) return "";
+        if (url == null)
+            return "";
 
         String trimmed = url.trim();
         if (trimmed.endsWith("/")) {
