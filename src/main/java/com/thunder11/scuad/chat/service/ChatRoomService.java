@@ -615,4 +615,33 @@ public class ChatRoomService {
         chatMessageRepository.save(systemMessage);
         log.info("종료 시스템 메시지 생성 완료: chatRoomId={}", chatRoomId);
     }
+
+    // 채팅방 멤버 목록 조회
+    public ChatRoomMemberListResponse getChatRoomMembers(Long chatRoomId, Long userId) {
+        log.info("채팅방 멤버 목록 조회 시작: chatRoomId={}, userId={}", chatRoomId, userId);
+
+        // 1. 채팅방 존재 확인
+        chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 요청자가 채팅방 멤버인지 확인 (권한 검증)
+        chatRoomMemberRepository.findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+
+        // 3. 활성 멤버 목록 조회 (HOST 우선, 입장 시간 오름차순)
+        List<ChatRoomMember> members = chatRoomMemberRepository.findAllActiveMembersByChatRoomId(chatRoomId);
+
+        // 4. 각 멤버의 닉네임 조회 및 DTO 변환
+        List<ChatRoomMemberResponse> memberResponses = members.stream()
+                .map(member -> {
+                    String nickname = userRepository.findNicknameByUserId(member.getUserId())
+                            .orElse("알 수 없음");
+                    return ChatRoomMemberResponse.of(member, nickname);
+                })
+                .collect(Collectors.toList());
+
+        log.info("채팅방 멤버 목록 조회 완료: chatRoomId={}, memberCount={}", chatRoomId, memberResponses.size());
+
+        return ChatRoomMemberListResponse.of(memberResponses);
+    }
 }

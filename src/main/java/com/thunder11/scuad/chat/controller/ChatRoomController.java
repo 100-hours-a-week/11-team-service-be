@@ -5,6 +5,7 @@ import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
 import com.thunder11.scuad.chat.dto.response.ChatMessageListResponse;
 import com.thunder11.scuad.chat.dto.response.ChatMessageResponse;
 import com.thunder11.scuad.chat.dto.response.ChatRoomDetailResponse;
+import com.thunder11.scuad.chat.dto.response.ChatRoomMemberListResponse;
 import com.thunder11.scuad.chat.domain.type.MessageType;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -118,6 +119,28 @@ public class ChatRoomController {
                 HttpStatus.OK.value(),
                 "CHAT_ROOM_JOINED",
                 "채팅방 입장 완료"
+        );
+    }
+
+    // 채팅방 멤버 목록 조회
+    @GetMapping("/chat-rooms/{chatRoomId}/members")
+    public ApiResponse<ChatRoomMemberListResponse> getChatRoomMembers(
+            @PathVariable Long chatRoomId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("GET /api/v1/chat-rooms/{}/members - userId={}",
+                chatRoomId, userPrincipal.getUserId());
+
+        ChatRoomMemberListResponse response = chatRoomService.getChatRoomMembers(
+                chatRoomId,
+                userPrincipal.getUserId()
+        );
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "SUCCESS",
+                "멤버 목록 조회 성공",
+                response
         );
     }
 
