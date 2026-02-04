@@ -11,4 +11,12 @@ spring:
     show-sql: true
 
   flyway: 
-      enabled: false
+      enabled: false  # dev는 flyway 비활성화 (또는 enabled: true + locations 명시)
+
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
+app:
+  frontend-url: ${APP_FRONTEND_URL:https://dev.scuad.kr}

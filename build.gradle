@@ -79,6 +79,34 @@ dependencies {
 
 }
 
+// ================================================
+// Flyway 초기화 태스크 (로컬 개발 전용)
+// ================================================
+// 의도: DB를 깨끗하게 초기화하고 테스트 데이터 재생성
+// 근거: 로컬 개발 시 언제든 초기 상태로 돌릴 수 있도록
+// ================================================
+tasks.register('flywayCleanMigrateLocal') {
+    description = 'Clean and migrate local database with test data'
+    group = 'flyway'
+    
+    doFirst {
+        println "🔄 로컬 DB 초기화 시작..."
+        println "   1. 기존 테이블 삭제 (flyway clean)"
+        println "   2. 스키마 생성 (V1__init.sql)"
+        println "   3. 테스트 데이터 삽입 (V100~V104)"
+    }
+    
+    doLast {
+        println "✅ 로컬 DB 초기화 완료!"
+        println "   - 테스트 사용자: admin_thunder, dev_kim, frontend_park"
+        println "   - 테스트 공고: 카카오 백엔드, 토스 프론트엔드, 당근마켓 풀스택"
+        println "   - 테스트 채팅방: 3개 (각 공고별 1개씩)"
+    }
+}
+
+// Flyway 태스크 실행 순서 정의
+flywayCleanMigrateLocal.dependsOn('flywayClean', 'flywayMigrate')
+
 tasks.register('integrationTest', Test) {
     description = 'Runs integration tests'
     group = 'verification'

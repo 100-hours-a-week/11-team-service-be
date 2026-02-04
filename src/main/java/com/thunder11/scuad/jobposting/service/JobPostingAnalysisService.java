@@ -27,6 +27,7 @@ import com.thunder11.scuad.jobposting.domain.CompanyAlias;
 import com.thunder11.scuad.jobposting.domain.EvaluationCriteria;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.JobMasterSkill;
+import com.thunder11.scuad.jobposting.domain.JobMasterSkillId;
 import com.thunder11.scuad.jobposting.domain.JobPost;
 import com.thunder11.scuad.jobposting.domain.Skill;
 import com.thunder11.scuad.jobposting.domain.type.JobSourceType;
@@ -193,6 +194,7 @@ public class JobPostingAnalysisService {
                 Skill skill = resolveSkill(skillName);
 
                 JobMasterSkill jobMasterSkill = JobMasterSkill.builder()
+                        .id(new JobMasterSkillId(null, skill.getId()))
                         .jobMaster(jobMaster)
                         .skill(skill)
                         .build();
