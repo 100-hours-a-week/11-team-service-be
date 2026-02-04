@@ -5,6 +5,7 @@ import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
 import com.thunder11.scuad.chat.dto.response.ChatMessageListResponse;
 import com.thunder11.scuad.chat.dto.response.ChatMessageResponse;
 import com.thunder11.scuad.chat.dto.response.ChatRoomDetailResponse;
+import com.thunder11.scuad.chat.dto.response.ChatRoomMemberListResponse;
 import com.thunder11.scuad.chat.domain.type.MessageType;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
