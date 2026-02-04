@@ -5,6 +5,7 @@ import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
 import com.thunder11.scuad.chat.dto.response.ChatMessageListResponse;
 import com.thunder11.scuad.chat.dto.response.ChatMessageResponse;
 import com.thunder11.scuad.chat.dto.response.ChatRoomDetailResponse;
+import com.thunder11.scuad.chat.domain.type.MessageType;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -28,6 +29,7 @@ public class ChatRoomController {
 
     private final ChatRoomService chatRoomService;
     private final ChatMessageService chatMessageService;
+    private final com.thunder11.scuad.file.service.FileStorageService fileStorageService;
 
     // 공고별 채팅방 목록 조회
     @GetMapping("/job-postings/{jobMasterId}/chat-rooms")
@@ -148,6 +150,8 @@ public class ChatRoomController {
     }
 
     // 메시지 전송 (multipart/form-data 지원)
+    // 수정 이유: FILE 타입 메시지 전송 시 파일을 S3에 업로드하고 fileId를 생성하여
+    //           MessageSendRequest에 포함시켜야 서비스에서 정상 처리 가능
     @PostMapping(value = "/chat-rooms/{chatRoomId}/messages", consumes = {"multipart/form-data"})
     public ApiResponse<ChatMessageResponse> sendMessage(
             @PathVariable Long chatRoomId,
@@ -156,13 +160,44 @@ public class ChatRoomController {
             @RequestParam(value = "file", required = false) org.springframework.web.multipart.MultipartFile file,
             @AuthenticationPrincipal UserPrincipal userPrincipal
     ) {
-        log.info("POST /api/v1/chat-rooms/{}/messages - messageType={}, content={}, userId={}",
-                chatRoomId, messageType, content, userPrincipal.getUserId());
+        log.info("POST /api/v1/chat-rooms/{}/messages - messageType={}, content={}, hasFile={}, userId={}",
+                chatRoomId, messageType, content, (file != null), userPrincipal.getUserId());
 
-        // DTO 생성 (String -> MessageType 변환)
+        // MessageType 변환
+        MessageType msgType = MessageType.valueOf(messageType.toUpperCase());
+        
+        Long fileId = null;
+        
+        // FILE 타입인 경우 파일 업로드 처리
+        if (msgType == MessageType.FILE) {
+            if (file == null || file.isEmpty()) {
+                log.warn("FILE 타입 메시지인데 파일이 없음: chatRoomId={}, userId={}", chatRoomId, userPrincipal.getUserId());
+                throw new com.thunder11.scuad.common.exception.ApiException(
+                    com.thunder11.scuad.common.exception.ErrorCode.INVALID_INPUT_VALUE
+                );
+            }
+            
+            // 파일 S3 업로드 및 fileId 생성
+            try {
+                com.thunder11.scuad.file.domain.FileObject fileObject = fileStorageService.uploadFile(
+                    file, 
+                    "chat-files/" + chatRoomId
+                );
+                fileId = fileObject.getId();
+                log.info("파일 업로드 완료: fileId={}, originalName={}, size={}", 
+                    fileId, file.getOriginalFilename(), file.getSize());
+            } catch (Exception e) {
+                log.error("파일 업로드 실패: chatRoomId={}, userId={}, error={}", 
+                    chatRoomId, userPrincipal.getUserId(), e.getMessage());
+                throw e;
+            }
+        }
+
+        // DTO 생성
         MessageSendRequest request = MessageSendRequest.builder()
-                .messageType(com.thunder11.scuad.chat.domain.type.MessageType.valueOf(messageType.toUpperCase()))
+                .messageType(msgType)
                 .content(content)
+                .fileId(fileId)
                 .build();
 
         ChatMessageResponse response = chatMessageService.sendMessage(
