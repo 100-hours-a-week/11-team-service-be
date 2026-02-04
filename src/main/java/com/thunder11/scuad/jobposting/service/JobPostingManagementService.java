@@ -21,6 +21,8 @@ import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
 import com.thunder11.scuad.jobposting.dto.request.JobPostingSearchCondition;
 import com.thunder11.scuad.jobposting.dto.response.JobPostingListResponse;
 import com.thunder11.scuad.jobposting.repository.JobMasterSkillRepository;
+import com.thunder11.scuad.chat.repository.ChatRoomRepository;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -31,13 +33,22 @@ public class JobPostingManagementService {
     private final AiServiceClient aiServiceClient;
     private final JobMasterRepository jobMasterRepository;
     private final JobMasterSkillRepository jobMasterSkillRepository;
+    private final ChatRoomRepository chatRoomRepository;
 
     @Transactional(readOnly = true)
     public Map<String, Object> getJobPostings(JobPostingSearchCondition condition) {
         List<JobMaster> masters = jobMasterRepository.searchJobPostings(condition);
 
+        // 채팅방 개수 일괄 조회
+        List<Long> masterIds = masters.stream().map(JobMaster::getId).toList();
+        Map<Long, Long> chatCounts = chatRoomRepository.countActiveRoomsByJobMasterIds(masterIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (Long) row[1]));
+
         List<JobPostingListResponse> items = masters.stream()
-                .map(JobPostingListResponse::from)
+                .map(m -> JobPostingListResponse.of(m, chatCounts.getOrDefault(m.getId(), 0L).intValue()))
                 .toList();
 
         Long nextCursor = items.isEmpty() ? null : items.get(items.size() - 1).getId();

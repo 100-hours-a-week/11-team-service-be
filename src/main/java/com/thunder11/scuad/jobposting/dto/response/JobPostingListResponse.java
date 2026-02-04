@@ -28,7 +28,7 @@ public class JobPostingListResponse {
 
     private int currentGroupCount;
 
-    public static JobPostingListResponse from(JobMaster jobMaster) {
+    public static JobPostingListResponse of(JobMaster jobMaster, int count) {
         return JobPostingListResponse.builder()
                 .id(jobMaster.getId())
                 .companyName(jobMaster.getCompany().getName())
@@ -38,7 +38,7 @@ public class JobPostingListResponse {
                 .status(jobMaster.getStatus())
                 .startDate(jobMaster.getStartDate())
                 .endDate(jobMaster.getEndDate())
-                .currentGroupCount(0) // 추후 chat 도메인 개발 후 변경
+                .currentGroupCount(count)
                 .build();
     }
 }
