@@ -13,10 +13,9 @@ import com.thunder11.scuad.user.service.UserService;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * User 도메인 컨트롤러
- * 사용자 정보 조회 및 관리 API
- */
+
+// User 도메인 컨트롤러
+// 사용자 정보 조회 및 관리 API
 @RestController
 @RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
@@ -24,14 +23,9 @@ public class UserController {
 
     private final UserService userService;
 
-    /**
-     * 현재 로그인한 사용자 정보 조회
-     * 
-     * GET /api/v1/users/me
-     * 
-     * @param userPrincipal JWT에서 추출한 사용자 인증 정보
-     * @return ResponseEntity<ApiResponse<UserResponse>> 사용자 정보
-     */
+
+     // 현재 로그인한 사용자 정보 조회
+     // GET /api/v1/users/me
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<UserResponse>> getCurrentUser(
             @AuthenticationPrincipal UserPrincipal userPrincipal

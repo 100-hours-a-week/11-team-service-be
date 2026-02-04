@@ -7,10 +7,8 @@ import com.thunder11.scuad.auth.domain.UserStatus;
 import lombok.Builder;
 import lombok.Getter;
 
-/**
- * 현재 로그인한 사용자 정보 응답 DTO
- * GET /api/v1/users/me 응답용
- */
+// 현재 로그인한 사용자 정보 응답 DTO
+// GET /api/v1/users/me 응답용
 @Getter
 @Builder
 public class UserResponse {
@@ -22,13 +20,8 @@ public class UserResponse {
     private String role;
     private String status;
 
-    /**
-     * User 엔티티와 이메일로 UserResponse 생성
-     *
-     * @param user User 엔티티
-     * @param email OAuth 계정의 이메일 (null 가능)
-     * @return UserResponse
-     */
+
+    // User 엔티티와 이메일로 UserResponse 생성
     public static UserResponse of(User user, String email) {
         return UserResponse.builder()
                 .userId(user.getUserId())
