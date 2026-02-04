@@ -19,8 +19,15 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import org.springframework.beans.factory.annotation.Value;
 
+import lombok.RequiredArgsConstructor;
+
+import com.thunder11.scuad.auth.security.JwtAuthenticationFilter;
+
+// Spring Security 설정
+// JWT 기반 인증, OAuth 로그인 URL은 퍼블릭 허용
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;

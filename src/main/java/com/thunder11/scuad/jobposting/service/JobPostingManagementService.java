@@ -58,8 +58,7 @@ public class JobPostingManagementService {
         return Map.of(
                 "items", items,
                 "next_cursor", nextCursor != null ? nextCursor : -1L,
-                "last", isLast
-        );
+                "last", isLast);
     }
 
     @Transactional(readOnly = true)
@@ -80,7 +79,7 @@ public class JobPostingManagementService {
                 .findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "확정할 수 있는 대기 상태의 공고가 없습니다."));
 
-        if(!jobPost.getCreatedBy().equals(userId)) {
+        if (!jobPost.getCreatedBy().equals(userId)) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
 
