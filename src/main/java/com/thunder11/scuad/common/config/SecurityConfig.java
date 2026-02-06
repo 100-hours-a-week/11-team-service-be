@@ -1,6 +1,7 @@
 package com.thunder11.scuad.common.config;
 
 import java.util.List;
+import java.util.ArrayList;
 import org.springframework.http.HttpMethod;
 
 import org.springframework.context.annotation.Bean;
@@ -56,7 +57,6 @@ public class SecurityConfig {
                         // 헬스 체크는 퍼블릭 허용
                         .requestMatchers("/api/health").permitAll()
                         // 채용공고 조회는 퍼블릭 허용 (임시)
-                        .requestMatchers("/api/v1/job-postings/**").permitAll()
 
                         // 나머지 URL은 인증 필요
                         .anyRequest().authenticated())
@@ -76,10 +76,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(
-                frontendUrl,
-                "http://localhost:3000",
-                "http://127.0.0.1:3000"));
+        configuration.setAllowedOrigins(List.of(frontendUrl));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
