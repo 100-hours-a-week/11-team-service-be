@@ -55,6 +55,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-postings/{jobMasterId}").permitAll()
                         // 헬스 체크는 퍼블릭 허용
                         .requestMatchers("/api/health").permitAll()
+                        // Actuator 엔드포인트 퍼블릭 허용
+                        .requestMatchers("/actuator/**").permitAll()
                         // 채용공고 조회는 퍼블릭 허용 (임시)
                         .requestMatchers("/api/v1/job-postings/**").permitAll()
 
