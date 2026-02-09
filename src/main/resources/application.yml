@@ -78,3 +78,17 @@ server:
 
 app:
   frontend-url: ${APP_FRONTEND_URL:https://www.scuad.kr}
+
+management:
+  server:
+    port: 9101
+  endpoints:
+    web:
+      exposure:
+        include: health, prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: scuad
