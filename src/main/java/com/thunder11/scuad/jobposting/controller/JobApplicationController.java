@@ -1,6 +1,6 @@
 package com.thunder11.scuad.jobposting.controller;
 
-import jakarta.validation.Valid;
+import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,6 +23,7 @@ import com.thunder11.scuad.jobposting.dto.request.AiAnalysisRequest;
 import com.thunder11.scuad.jobposting.dto.response.AiAnalysisResponse;
 import com.thunder11.scuad.jobposting.dto.response.AiEvaluationResultResponse;
 import com.thunder11.scuad.jobposting.dto.response.DocumentResponse;
+import com.thunder11.scuad.jobposting.dto.response.MyApplicationResponse;
 import com.thunder11.scuad.jobposting.service.JobApplicationService;
 import com.thunder11.scuad.jobposting.service.JopApplicationAnalysisService;
 
@@ -43,6 +45,17 @@ public class JobApplicationController {
                                 applicationId);
 
                 return ApiResponse.of(200, "AI_EVALUATION_FOUND", "종합 평가 결과를 조회했습니다.", result);
+        }
+
+        @GetMapping("/me")
+        public ApiResponse<List<MyApplicationResponse>> getMyApplications(
+                @RequestParam(required = false) String keyword,
+                @AuthenticationPrincipal UserPrincipal principal) {
+
+            List<MyApplicationResponse> result = jobApplicationService.getMyApplications(principal.getUserId(), keyword);
+
+            return ApiResponse.of(200, "MY_APPLICATION_LIST_SUCCESS", "내 지원 목록 조회 성공", result);
+
         }
 
         @PostMapping("/{applicationId}/documents")
