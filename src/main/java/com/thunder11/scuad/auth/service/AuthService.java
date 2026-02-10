@@ -21,6 +21,7 @@ import com.thunder11.scuad.auth.repository.UserOAuthAccountRepository;
 import com.thunder11.scuad.auth.repository.UserRepository;
 import com.thunder11.scuad.auth.util.JwtProvider;
 
+import com.thunder11.scuad.auth.util.TokenHasher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -180,41 +181,49 @@ public class AuthService {
         LocalDateTime expiresAt = LocalDateTime.now()
                 .plusSeconds(jwtProperties.getRefreshTokenExpiration() / 1000);
 
+        // 토큰을 해시 처리
+        String hashedToken = TokenHasher.hash(refreshToken);
+        log.debug("Refresh Token 해시 처리 완료: userId={}", user.getUserId());
+
         AuthRefreshToken tokenEntity = refreshTokenRepository
                 .findByUser(user)
                 .stream()
                 .filter(AuthRefreshToken::isValid)
                 .findFirst()
                 .map(existing -> {
-                    // 기존 토큰 업데이트
-                    existing.updateToken(refreshToken, expiresAt);
+                    // 기존 토큰 업데이트 (해시 값 저장)
+                    existing.updateToken(hashedToken, expiresAt);  // 해시 저장
                     return existing;
                 })
                 .orElseGet(() -> {
-                    // 새 토큰 생성
+                    // 새 토큰 생성 (해시 값 저장)
                     return AuthRefreshToken.builder()
                             .user(user)
-                            .tokenValue(refreshToken)
+                            .tokenValue(hashedToken)  // 해시 저장
                             .expiresAt(expiresAt)
                             .build();
                 });
 
         refreshTokenRepository.save(tokenEntity);
-        log.info("Refresh Token 저장 완료: userId={}", user.getUserId());
+        log.info("Refresh Token 저장 완료 (해시): userId={}", user.getUserId());
     }
 
     // Refresh Token으로 Access Token 재발급
     // Refresh Token도 함께 갱신하여 보안 강화 (Refresh Token Rotation)
     @Transactional
     public TokenRefreshResponse refreshAccessToken(String refreshTokenValue) {
-        // 1. DB에서 Refresh Token 조회
+        // 1. 입력 토큰을 해시 처리
+        String hashedToken = TokenHasher.hash(refreshTokenValue);
+        log.debug("Refresh Token 해시 처리하여 조회 시작");
+
+        // 2. DB에서 Refresh Token 조회 (해시 값으로 조회)
         AuthRefreshToken refreshToken = refreshTokenRepository
                 .findByTokenValueAndRevokedAtIsNullAndExpiresAtAfter(
-                        refreshTokenValue,
+                        hashedToken,  // 해시 값으로 조회
                         LocalDateTime.now()
                 )
                 .orElseThrow(() -> {
-                    log.warn("유효하지 않은 Refresh Token: {}", refreshTokenValue.substring(0, 10) + "...");
+                    log.warn("유효하지 않은 Refresh Token (해시 불일치 또는 만료)");
                     return new ApiException(ErrorCode.REFRESH_TOKEN_NOT_FOUND);
                 });
 
@@ -233,10 +242,13 @@ public class AuthService {
         // 4. 새 Refresh Token 발급 (Refresh Token Rotation)
         String newRefreshToken = jwtProvider.generateRefreshToken();
 
-        // 5. DB에 새 Refresh Token 저장 (기존 토큰 업데이트)
+        // 5. DB에 새 Refresh Token 저장 (해시 처리는 saveRefreshToken에서 수행)
         LocalDateTime newExpiresAt = LocalDateTime.now()
                 .plusSeconds(jwtProperties.getRefreshTokenExpiration() / 1000);
-        refreshToken.updateToken(newRefreshToken, newExpiresAt);
+
+        // 새 토큰을 해시 처리하여 저장
+        String newHashedToken = TokenHasher.hash(newRefreshToken);
+        refreshToken.updateToken(newHashedToken, newExpiresAt);  // 해시 저장
         refreshTokenRepository.save(refreshToken);
 
         log.info("토큰 재발급 완료: userId={}", user.getUserId());
@@ -244,8 +256,8 @@ public class AuthService {
         // 6. 응답 생성
         return TokenRefreshResponse.of(
                 newAccessToken,
-                newRefreshToken,
-                jwtProperties.getAccessTokenExpiration() / 1000  // 밀리초 → 초 변환
+                newRefreshToken,  // 클라이언트에는 원본 토큰 전달 (쿠키용)
+                jwtProperties.getAccessTokenExpiration() / 1000
         );
     }
 }
