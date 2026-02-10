@@ -1,11 +1,6 @@
 package com.thunder11.scuad.auth.controller;
 
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.view.RedirectView;
 import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.beans.factory.annotation.Value;
@@ -88,16 +83,29 @@ public class AuthController {
     }
 
     // Access Token 재발급
-    // Refresh Token을 받아서 새로운 Access Token과 Refresh Token 발급
+// Refresh Token을 쿠키에서 받아서 새로운 Access Token과 Refresh Token 발급
     @PostMapping("/refresh")
     public TokenRefreshResponse refreshToken(
-            @Valid @RequestBody RefreshTokenRequest request) {
-        log.info("토큰 재발급 요청: refreshToken={}", request.getRefreshToken().substring(0, 10) + "...");
+            @CookieValue(name = "refreshToken") String refreshToken,
+            HttpServletResponse response
+    ) {
+        log.info("토큰 재발급 요청 (쿠키에서 읽음)");
 
         // Refresh Token으로 새 토큰 발급
-        TokenRefreshResponse response = authService.refreshAccessToken(request.getRefreshToken());
+        TokenRefreshResponse tokenResponse = authService.refreshAccessToken(refreshToken);
 
-        log.info("토큰 재발급 완료");
-        return response;
+        // 새로운 Refresh Token을 HttpOnly 쿠키로 설정
+        ResponseCookie refreshTokenCookie = ResponseCookie.from("refreshToken", tokenResponse.getRefreshToken())
+                .httpOnly(true)                    // JavaScript 접근 차단 (XSS 방어)
+                .secure(true)                      // HTTPS에서만 전송 (중간자 공격 방어)
+                .path("/api/v1/auth")              // 토큰 재발급 API에만 쿠키 전송
+                .maxAge(14 * 24 * 60 * 60)         // 14일 (초 단위)
+                .sameSite("Lax")                   // CSRF 기본 방어
+                .build();
+
+        response.addHeader("Set-Cookie", refreshTokenCookie.toString());
+        log.info("토큰 재발급 완료, 새 Refresh Token을 HttpOnly 쿠키로 설정");
+
+        return tokenResponse;
     }
 }
