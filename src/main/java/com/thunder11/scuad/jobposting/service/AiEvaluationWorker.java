@@ -36,6 +36,7 @@ public class AiEvaluationWorker {
         private final AiServiceClient aiServiceClient;
 
         @Async
+        @Transactional(propagation = Propagation.REQUIRES_NEW)
         @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
         public void processEvaluationAsync(AiEvaluationCreateEvent event) {
 
