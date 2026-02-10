@@ -5,6 +5,8 @@ import java.util.stream.Collectors;
 
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -73,6 +75,13 @@ public class AiEvaluationWorker {
 
         private void saveEvaluationResult(JobApplication application, AiEvaluationResultResponse result) {
 
+                // Idempotency: 이미 평가 결과가 저장되어 있으면 중복 insert를 피한다.
+                // (부하테스트/재시도/중복 이벤트 발행 시 uk_applicant_evaluation_application 충돌 방지)
+                if (aiApplicationEvaluationRepository.findByJobApplicationId(application.getId()).isPresent()) {
+                        log.info("이미 AI 평가 결과 존재: applicationId={}", application.getId());
+                        return;
+                }
+
                 List<EvaluationCriteria> criteria = result.getEvaluationCriteria() != null
                                 ? result.getEvaluationCriteria().stream()
                                                 .map(c -> new EvaluationCriteria(c.getName(), c.getDescription()))
@@ -97,6 +106,11 @@ public class AiEvaluationWorker {
                                 .comparisonScores(evaluationScores)
                                 .build();
 
-                aiApplicationEvaluationRepository.save(evaluation);
+                try {
+                        aiApplicationEvaluationRepository.save(evaluation);
+                } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                        // DB 유니크 제약으로 중복 저장이 막힌 경우: 이미 다른 워커가 저장한 것으로 보고 무시한다.
+                        log.warn("평가 결과 중복 저장 감지(무시): applicationId={}, msg={}", application.getId(), e.getMessage());
+                }
         }
 }
