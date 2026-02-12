@@ -1,5 +1,6 @@
 package com.thunder11.scuad.chat.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -643,5 +644,109 @@ public class ChatRoomService {
         log.info("채팅방 멤버 목록 조회 완료: chatRoomId={}, memberCount={}", chatRoomId, memberResponses.size());
 
         return ChatRoomMemberListResponse.of(memberResponses);
+    }
+    // 내가 참여 중인 채팅방 목록 조회
+    // 사용자는 본인이 참여 중인 채팅방 리스트를 확인할 수 있어야 함
+    // 최신 참여 순으로 정렬하여 활동성 높은 채팅방을 우선 표시
+    public MyChatRoomListResponse getMyChatRooms(
+            Long userId,
+            Long cursor,
+            int size
+    ) {
+        log.info("내 채팅방 목록 조회 시작: userId={}, cursor={}, size={}", userId, cursor, size);
+
+        // 1. 내가 참여 중인 멤버십 조회 (최신 참여 순, size+1개 조회하여 hasNext 판단)
+        PageRequest pageRequest = PageRequest.of(0, size + 1);
+        List<ChatRoomMember> members = chatRoomMemberRepository.findMyChatRooms(
+                userId,
+                cursor,
+                pageRequest
+        );
+
+        log.debug("조회된 멤버십 수: {}", members.size());
+
+        // 2. hasNext 판단 및 실제 반환할 데이터 추출
+        boolean hasNext = members.size() > size;
+        List<ChatRoomMember> actualMembers = hasNext
+                ? members.subList(0, size)
+                : members;
+
+        // 3. 각 멤버십에 대해 채팅방 정보 조회 및 DTO 변환
+        List<MyChatRoomResponse> chatRoomResponses = actualMembers.stream()
+                .map(member -> {
+                    // 채팅방 정보 조회
+                    ChatRoom chatRoom = chatRoomRepository.findById(member.getChatRoomId())
+                            .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+                    // 현재 인원 수 조회
+                    long currentParticipants = chatRoomMemberRepository
+                            .countByChatRoomIdAndKickedAtIsNull(chatRoom.getChatRoomId());
+
+                    // 방장 닉네임 조회
+                    String hostNickname = userRepository.findNicknameByUserId(chatRoom.getCreatedBy())
+                            .orElse("알 수 없음");
+
+                    // 마지막 메시지 조회 (선택)
+                    Optional<ChatMessage> lastMessageOpt = chatMessageRepository
+                            .findTopByChatRoomIdOrderBySentAtDesc(chatRoom.getChatRoomId());
+
+                    String lastMessagePreview = lastMessageOpt
+                            .map(msg -> {
+                                if (msg.getMessageType().name().equals("FILE")) {
+                                    return "[파일]";
+                                } else if (msg.getMessageType().name().equals("SYSTEM")) {
+                                    return msg.getContent();
+                                } else {
+                                    // TEXT 메시지는 50자로 제한
+                                    String content = msg.getContent();
+                                    return content.length() > 50
+                                            ? content.substring(0, 50) + "..."
+                                            : content;
+                                }
+                            })
+                            .orElse(null);
+
+                    LocalDateTime lastMessageAt = lastMessageOpt
+                            .map(ChatMessage::getSentAt)
+                            .orElse(null);
+
+                    return MyChatRoomResponse.builder()
+                            .chatRoomId(chatRoom.getChatRoomId())
+                            .jobMasterId(chatRoom.getJobMasterId())
+                            .roomName(chatRoom.getRoomName())
+                            .roomGoal(chatRoom.getRoomGoal())
+                            .cutlineScore(chatRoom.getCutlineScore())
+                            .currentParticipants((int) currentParticipants)
+                            .maxParticipants(chatRoom.getMaxParticipants())
+                            .hostNickname(hostNickname)
+                            .preferredConditions(chatRoom.getPreferredConditions())
+                            .status(chatRoom.getStatus())
+                            .myRole(member.getRole())
+                            .lastMessagePreview(lastMessagePreview)
+                            .lastMessageAt(lastMessageAt)
+                            .joinedAt(member.getJoinedAt())
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        // 4. 다음 커서 계산 (마지막 멤버의 chatRoomMemberId)
+        Long nextCursor = hasNext && !actualMembers.isEmpty()
+                ? actualMembers.get(actualMembers.size() - 1).getChatRoomMemberId()
+                : null;
+
+        // 5. 페이징 정보 생성
+        PaginationResponse pagination = PaginationResponse.builder()
+                .nextCursor(nextCursor)
+                .hasNext(hasNext)
+                .size(actualMembers.size())
+                .build();
+
+        log.info("내 채팅방 목록 조회 완료: userId={}, 조회된 방 수={}, hasNext={}",
+                userId, chatRoomResponses.size(), hasNext);
+
+        return MyChatRoomListResponse.builder()
+                .chatRooms(chatRoomResponses)
+                .pagination(pagination)
+                .build();
     }
 }
