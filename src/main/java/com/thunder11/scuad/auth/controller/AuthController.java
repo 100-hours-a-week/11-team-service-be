@@ -21,7 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 // 카카오 OAuth 로그인, 토큰 재발급, 로그아웃 등 처리
 @Slf4j
 @RestController
-@RequestMapping("/api/v1/auth/kakao")
+@RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
@@ -32,7 +32,7 @@ public class AuthController {
 
     // 카카오 로그인 시작 (카카오 인증 페이지로 리다이렉트)
     // 프론트엔드가 이 엔드포인트를 호출하면 카카오 OAuth 페이지로 이동
-    @GetMapping("/login")
+    @GetMapping("/kakao/login")
     public RedirectView startKakaoLogin(
             @RequestParam(required = false) String state // CSRF 방지용 (선택)
     ) {
@@ -46,7 +46,7 @@ public class AuthController {
     // 카카오 로그인 콜백 처리
     // 카카오가 인증 완료 후 이 엔드포인트로 리다이렉트
     // 인가 코드를 받아서 JWT 토큰 발급
-    @GetMapping("/callback")
+    @GetMapping("/kakao/callback")
     public RedirectView handleKakaoCallback(
             @RequestParam String code, // 카카오 인가 코드
             @RequestParam(required = false) String state, // CSRF 방지용 (선택)
