@@ -1,5 +1,8 @@
 package com.thunder11.scuad.auth.controller;
 
+import com.thunder11.scuad.auth.security.UserPrincipal;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.view.RedirectView;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -83,7 +86,7 @@ public class AuthController {
     }
 
     // Access Token 재발급
-// Refresh Token을 쿠키에서 받아서 새로운 Access Token과 Refresh Token 발급
+    // Refresh Token을 쿠키에서 받아서 새로운 Access Token과 Refresh Token 발급
     @PostMapping("/refresh")
     public TokenRefreshResponse refreshToken(
             @CookieValue(name = "refreshToken") String refreshToken,
@@ -107,5 +110,33 @@ public class AuthController {
         log.info("토큰 재발급 완료, 새 Refresh Token을 HttpOnly 쿠키로 설정");
 
         return tokenResponse;
+    }
+
+    // 로그아웃 (전체 디바이스 무효화)
+    // 해당 사용자의 모든 Refresh Token을 철회하여 재발급 차단
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            HttpServletResponse response
+    ) {
+        Long userId = userPrincipal.getUserId();
+        log.info("로그아웃 요청: userId={}", userId);
+
+        // 해당 사용자의 모든 Refresh Token 철회
+        authService.logoutAllDevices(userId);
+
+        // Refresh Token 쿠키 만료 처리
+        ResponseCookie expiredCookie = ResponseCookie.from("refreshToken", "")
+                .httpOnly(true)
+                .secure(true)
+                .path("/api/v1/auth")
+                .maxAge(0)  // 즉시 만료
+                .sameSite("Lax")
+                .build();
+
+        response.addHeader("Set-Cookie", expiredCookie.toString());
+        log.info("로그아웃 완료: userId={}, 모든 디바이스에서 Refresh Token 철회됨", userId);
+
+        return ResponseEntity.noContent().build();
     }
 }
