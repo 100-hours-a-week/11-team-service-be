@@ -40,8 +40,6 @@ spring:
       credentials:
         access-key: ${AWS_ACCESS_KEY}
         secret-key: ${AWS_SECRET_KEY}
-      region:
-        static: ${AWS_REGION}
       s3:
         bucket: ${AWS_S3_BUCKET}
 
@@ -61,6 +59,17 @@ jwt:
 ai:
   service:
     url: ${AI_SERVICE_URL}
+
+  jpa:
+    properties:
+      hibernate:
+        show_sql: true
+        format_sql: true
+        highlight_sql: true
+        session:
+          events:
+            log:
+              LOG_QUERIES_SLOWER_THAN_MS: 1000
 
   flyway: 
       enabled: false

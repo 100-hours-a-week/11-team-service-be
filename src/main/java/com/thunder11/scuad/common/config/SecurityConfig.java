@@ -7,12 +7,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -55,8 +53,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-postings/{jobMasterId}").permitAll()
                         // 헬스 체크는 퍼블릭 허용
                         .requestMatchers("/api/health").permitAll()
+                        // Actuator 엔드포인트 퍼블릭 허용
+                        .requestMatchers("/actuator/**").permitAll()
                         // 채용공고 조회는 퍼블릭 허용 (임시)
                         .requestMatchers("/api/v1/job-postings/**").permitAll()
+                        .requestMatchers("/api/v1/job-postings").permitAll()
 
                         // 나머지 URL은 인증 필요
                         .anyRequest().authenticated())
@@ -76,10 +77,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(
-                frontendUrl,
-                "http://localhost:3000",
-                "http://127.0.0.1:3000"));
+        configuration.setAllowedOrigins(List.of(frontendUrl));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);

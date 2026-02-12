@@ -1,26 +1,28 @@
 package com.thunder11.scuad.jobposting.service;
 
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Optional;
-
 import lombok.RequiredArgsConstructor;
 
+import com.thunder11.scuad.auth.domain.User;
+import com.thunder11.scuad.auth.repository.UserRepository;
 import com.thunder11.scuad.common.exception.ApiException;
 import com.thunder11.scuad.common.exception.ErrorCode;
 import com.thunder11.scuad.file.domain.FileObject;
 import com.thunder11.scuad.file.service.FileStorageService;
 import com.thunder11.scuad.jobposting.domain.ApplicationDocument;
 import com.thunder11.scuad.jobposting.domain.JobApplication;
+import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.type.ApplicationDocumentType;
+import com.thunder11.scuad.jobposting.domain.type.ApplicationStatus;
+import com.thunder11.scuad.jobposting.dto.response.MyApplicationResponse;
 import com.thunder11.scuad.jobposting.repository.ApplicationDocumentRepository;
 import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
-import com.thunder11.scuad.auth.domain.User;
-import com.thunder11.scuad.auth.repository.UserRepository;
-import com.thunder11.scuad.jobposting.domain.JobMaster;
-import com.thunder11.scuad.jobposting.domain.type.ApplicationStatus;
 import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
 
 @Service
@@ -89,6 +91,14 @@ public class JobApplicationService {
         }
 
         return saveDocument(jobApplication, docType, file);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MyApplicationResponse> getMyApplications(Long userId, String keyword) {
+        return jobApplicationRepository.findMyApplication(userId, keyword)
+                .stream()
+                .map(MyApplicationResponse::from)
+                .toList();
     }
 
     private void validateFile(MultipartFile file, String docType) {
