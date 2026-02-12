@@ -8,6 +8,6 @@ public class JobPostingSearchCondition {
     private Long cursor;
     private Integer size = 20;
     private String keyword;
-    private String status = "OPEN";
+    private String status;
     private String sort = "DEADLINE_ASC";
 }

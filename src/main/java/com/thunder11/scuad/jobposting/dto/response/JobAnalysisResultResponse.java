@@ -28,4 +28,5 @@ public class JobAnalysisResultResponse {
     private LocalDate startDate;
     private LocalDate endDate;
     private String aiSummary;
+    private String registrationStatus;
 }
