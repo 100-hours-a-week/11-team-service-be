@@ -1,6 +1,7 @@
 package com.thunder11.scuad.auth.service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import com.thunder11.scuad.auth.domain.*;
@@ -278,5 +279,30 @@ public class AuthService {
                 newRefreshToken,  // 클라이언트에는 원본 토큰 전달 (쿠키용)
                 jwtProperties.getAccessTokenExpiration() / 1000
         );
+    }
+
+    // 전체 디바이스 로그아웃
+    // 해당 사용자의 모든 유효한 Refresh Token을 철회
+    @Transactional
+    public void logoutAllDevices(Long userId) {
+        log.info("전체 디바이스 로그아웃 시작: userId={}", userId);
+
+        // 해당 사용자의 모든 유효한 토큰 조회
+        List<AuthRefreshToken> validTokens = refreshTokenRepository
+                .findByUser_UserIdAndRevokedAtIsNull(userId);
+
+        if (validTokens.isEmpty()) {
+            log.warn("로그아웃할 유효한 토큰이 없음: userId={}", userId);
+            return;
+        }
+
+        // 모든 토큰 철회
+        LocalDateTime now = LocalDateTime.now();
+        validTokens.forEach(token -> token.revoke(now));
+
+        refreshTokenRepository.saveAll(validTokens);
+
+        log.info("전체 디바이스 로그아웃 완료: userId={}, 철회된 토큰 수={}",
+                userId, validTokens.size());
     }
 }
