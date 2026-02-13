@@ -54,4 +54,8 @@ public class ApplicationDocument extends BaseTimeEntity {
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
+
+    public void updateFile(FileObject file) {
+        this.file = file;
+    }
 }

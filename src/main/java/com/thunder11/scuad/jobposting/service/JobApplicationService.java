@@ -89,13 +89,15 @@ public class JobApplicationService {
         } else {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "문서 타입은 RESUME 또는 PORTFOLIO여야 합니다.");
         }
-
         ApplicationDocumentType type = ApplicationDocumentType.valueOf(docType.toUpperCase());
-        if (applicationDocumentRepository.existsByJobApplicationIdAndDocType(applicationId, type)) {
-            throw new ApiException(ErrorCode.CONFLICT, "이미 해당 타입의 문서가 등록되어있습니다.");
-        }
 
-        return saveDocument(jobApplication, docType, file);
+        Optional<ApplicationDocument> existingDoc = applicationDocumentRepository.findByJobApplication_IdAndDocType(applicationId, type);
+
+        if(existingDoc.isPresent()) {
+            return updateDocument(existingDoc.get(), file, docType);
+        } else {
+            return saveDocument(jobApplication, docType, file);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -164,5 +166,17 @@ public class JobApplicationService {
 
         application.addApplicationDocument(document);
         return applicationDocumentRepository.save(document);
+    }
+
+    private ApplicationDocument updateDocument(ApplicationDocument existingDoc, MultipartFile file, String docType) {
+        FileObject oldFile = existingDoc.getFile();
+        fileStorageService.deleteFile(oldFile.getId());
+
+        String uploadPath = "applications/" + existingDoc.getId() + "/" + docType.toLowerCase();
+        FileObject newFile = fileStorageService.uploadFile(file, uploadPath);
+
+        existingDoc.updateFile(newFile);
+
+        return applicationDocumentRepository.save(existingDoc);
     }
 }

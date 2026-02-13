@@ -1,6 +1,7 @@
 package com.thunder11.scuad.jobposting.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -11,4 +12,6 @@ public interface ApplicationDocumentRepository extends JpaRepository<Application
     boolean existsByJobApplicationIdAndDocType(long jobApplicationId, ApplicationDocumentType docType);
 
     List<ApplicationDocument> findAllByJobApplication_Id(Long jobApplicationId);
+
+    Optional<ApplicationDocument>findByJobApplication_IdAndDocType(Long jobApplicationId, ApplicationDocumentType docType);
 }
