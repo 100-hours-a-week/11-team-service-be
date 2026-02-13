@@ -285,7 +285,7 @@ public class ChatMessageService {
         Map<Long, FileInfo> fileInfoMap = new HashMap<>();
         if (savedMessage.getFileId() != null) {
             fileObjectRepository.findFileInfoById(savedMessage.getFileId())
-                    .ifPresent(arr -> {
+                    .ifPresent((Object[] arr) -> {
                         FileInfo info = new FileInfo(
                                 (Long) arr[0],      // fileId
                                 (String) arr[1],    // fileName
