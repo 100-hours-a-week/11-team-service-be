@@ -21,6 +21,7 @@ import com.thunder11.scuad.common.exception.ApiException;
 import com.thunder11.scuad.common.exception.ErrorCode;
 import com.thunder11.scuad.file.domain.FileObject;
 import com.thunder11.scuad.file.repository.FileObjectRepository;
+import software.amazon.awssdk.services.s3.S3Client;
 
 @Slf4j
 @Service
@@ -29,6 +30,7 @@ public class S3FileManagementService implements FileStorageService {
 
     private final S3Template s3Template;
     private final FileObjectRepository fileObjectRepository;
+    private final S3Client s3Client;
 
     @Value("${spring.cloud.aws.s3.bucket}")
     private String bucket;
@@ -89,6 +91,19 @@ public class S3FileManagementService implements FileStorageService {
         } catch (Exception e) {
             log.error("Pre-signed URL 생성 실패: fileId={}, error={}", fileId, e.getMessage());
             throw new ApiException(ErrorCode.FILE_DOWNLOAD_ERROR);
+        }
+    }
+
+    @Override
+    public void deleteFile(Long fileId) {
+        FileObject fileObject = fileObjectRepository.findById(fileId)
+                .orElseThrow(() -> new ApiException(ErrorCode.FILE_NOT_FOUND));
+
+        try {
+            s3Template.deleteObject(bucket, fileObject.getObjectKey());
+            log.info("S3 파일 삭제 완료: fileId={}, objectKey={}", fileId, fileObject.getObjectKey());
+        } catch (Exception e) {
+            log.error("S3 파일 삭제 실패: fileId={}, objectKey={}, error={}", fileId, fileObject.getObjectKey(), e.getMessage());
         }
     }
 }
