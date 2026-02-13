@@ -60,4 +60,11 @@ public class AiApplicantEvaluation extends BaseTimeEntity {
         this.feedbackDetail = feedbackDetail;
         this.comparisonScores = comparisonScores;
     }
+
+    public void updateEvaluation(Integer overallScore, String oneLineReview, String feedbackDetail, List<EvaluationScore> comparisonScores) {
+        this.overallScore = overallScore;
+        this.oneLineReview = oneLineReview;
+        this.feedbackDetail = feedbackDetail;
+        this.comparisonScores = comparisonScores;
+    }
 }
