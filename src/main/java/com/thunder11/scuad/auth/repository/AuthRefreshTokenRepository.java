@@ -29,4 +29,8 @@ public interface AuthRefreshTokenRepository extends JpaRepository<AuthRefreshTok
     // 만료된 토큰 삭제용 조회
     // 배치 작업에서 사용
     List<AuthRefreshToken> findByExpiresAtBefore(LocalDateTime now);
+
+    // 특정 사용자의 모든 유효한 Refresh Token 조회
+    // 로그아웃 시 전체 디바이스 무효화에 사용
+    List<AuthRefreshToken> findByUser_UserIdAndRevokedAtIsNull(Long userId);
 }

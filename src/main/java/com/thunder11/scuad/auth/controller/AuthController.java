@@ -1,5 +1,8 @@
 package com.thunder11.scuad.auth.controller;
 
+import com.thunder11.scuad.auth.security.UserPrincipal;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.view.RedirectView;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -21,7 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 // 카카오 OAuth 로그인, 토큰 재발급, 로그아웃 등 처리
 @Slf4j
 @RestController
-@RequestMapping("/api/v1/auth/kakao")
+@RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
@@ -32,7 +35,7 @@ public class AuthController {
 
     // 카카오 로그인 시작 (카카오 인증 페이지로 리다이렉트)
     // 프론트엔드가 이 엔드포인트를 호출하면 카카오 OAuth 페이지로 이동
-    @GetMapping("/login")
+    @GetMapping("/kakao/login")
     public RedirectView startKakaoLogin(
             @RequestParam(required = false) String state // CSRF 방지용 (선택)
     ) {
@@ -46,7 +49,7 @@ public class AuthController {
     // 카카오 로그인 콜백 처리
     // 카카오가 인증 완료 후 이 엔드포인트로 리다이렉트
     // 인가 코드를 받아서 JWT 토큰 발급
-    @GetMapping("/callback")
+    @GetMapping("/kakao/callback")
     public RedirectView handleKakaoCallback(
             @RequestParam String code, // 카카오 인가 코드
             @RequestParam(required = false) String state, // CSRF 방지용 (선택)
@@ -83,7 +86,7 @@ public class AuthController {
     }
 
     // Access Token 재발급
-// Refresh Token을 쿠키에서 받아서 새로운 Access Token과 Refresh Token 발급
+    // Refresh Token을 쿠키에서 받아서 새로운 Access Token과 Refresh Token 발급
     @PostMapping("/refresh")
     public TokenRefreshResponse refreshToken(
             @CookieValue(name = "refreshToken") String refreshToken,
@@ -107,5 +110,33 @@ public class AuthController {
         log.info("토큰 재발급 완료, 새 Refresh Token을 HttpOnly 쿠키로 설정");
 
         return tokenResponse;
+    }
+
+    // 로그아웃 (전체 디바이스 무효화)
+    // 해당 사용자의 모든 Refresh Token을 철회하여 재발급 차단
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            HttpServletResponse response
+    ) {
+        Long userId = userPrincipal.getUserId();
+        log.info("로그아웃 요청: userId={}", userId);
+
+        // 해당 사용자의 모든 Refresh Token 철회
+        authService.logoutAllDevices(userId);
+
+        // Refresh Token 쿠키 만료 처리
+        ResponseCookie expiredCookie = ResponseCookie.from("refreshToken", "")
+                .httpOnly(true)
+                .secure(true)
+                .path("/api/v1/auth")
+                .maxAge(0)  // 즉시 만료
+                .sameSite("Lax")
+                .build();
+
+        response.addHeader("Set-Cookie", expiredCookie.toString());
+        log.info("로그아웃 완료: userId={}, 모든 디바이스에서 Refresh Token 철회됨", userId);
+
+        return ResponseEntity.noContent().build();
     }
 }
