@@ -25,6 +25,7 @@ import com.thunder11.scuad.chat.repository.ChatRoomMemberRepository;
 import com.thunder11.scuad.chat.repository.ChatRoomRepository;
 import com.thunder11.scuad.common.exception.ApiException;
 import com.thunder11.scuad.common.exception.ErrorCode;
+import com.thunder11.scuad.file.service.S3FileManagementService;
 
 // 채팅 메시지 관련 비즈니스 로직 처리
 @Slf4j
@@ -38,6 +39,7 @@ public class ChatMessageService {
     private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final UserRepository userRepository;
     private final FileObjectRepository fileObjectRepository;
+    private final S3FileManagementService s3FileManagementService;
 
     private record FileInfo(Long fileId, String fileName, String contentType, Long fileSize) {
     }
@@ -56,12 +58,24 @@ public class ChatMessageService {
         if (message.getFileId() != null) {
             FileInfo info = fileInfoMap.get(message.getFileId());
             if (info != null) {
+                // Pre-signed URL 생성 추가
+                String fileUrl = null;
+                try {
+                    fileUrl = s3FileManagementService.generatePresignedUrl(
+                            info.fileId,
+                            java.time.Duration.ofMinutes(5)
+                    );
+                } catch (Exception e) {
+                    log.error("Pre-signed URL 생성 실패: fileId={}, error={}", info.fileId, e.getMessage());
+                    // URL 생성 실패 시에도 파일 정보는 반환 (다운로드만 안 됨)
+                }
+
                 fileInfo = ChatMessageResponse.FileInfo.builder()
                         .fileId(info.fileId)
                         .fileName(info.fileName)
                         .fileSize(info.fileSize)
                         .contentType(info.contentType)
-                        .fileUrl(null)
+                        .fileUrl(fileUrl)
                         .build();
             }
         }
