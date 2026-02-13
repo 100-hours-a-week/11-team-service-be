@@ -54,6 +54,22 @@ public class JopApplicationAnalysisService {
             throw new ApiException(ErrorCode.FORBIDDEN, "본인의 분석 결과만 조회할 수 있습니다.");
         }
 
+        AiEvalJob recentJob = aiEvalJobRepository
+                .findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(applicationId, AnalysisType.EVALUATION)
+                .orElse(null);
+
+        if (recentJob != null) {
+            switch (recentJob.getStatus()) {
+                case PENDING:
+                case PROCESSING:
+                    throw new ApiException(ErrorCode.ACCEPTED, "AI가 현재 이력서를 분석 중입니다.");
+                case FAILED:
+                    throw new ApiException(ErrorCode.INTERNAL_ERROR, "분석 중 오류가 발생했습니다: " + recentJob.getErrorMessage());
+                case SUCCEEDED:
+                    break;
+            }
+        }
+
         Optional<AiApplicantEvaluation> evaluationIsReady = aiApplicationEvaluationRepository
                 .findByJobApplicationId(applicationId);
 
@@ -61,25 +77,11 @@ public class JopApplicationAnalysisService {
             return AiEvaluationResultResponse.from(evaluationIsReady.get());
         }
 
-        AiEvalJob recentJob = aiEvalJobRepository
-                .findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(applicationId, AnalysisType.EVALUATION)
-                .orElse(null);
-
-        if (recentJob == null) {
-            throw new ApiException(ErrorCode.ACCEPTED, "AI 분석 대기 중입니다.");
+        if (recentJob != null && recentJob.getStatus() == AiJobStatus.SUCCEEDED) {
+            throw new ApiException(ErrorCode.INTERNAL_ERROR, "분석은 완료되었으나 결과 데이터가 없습니다.");
         }
 
-        switch (recentJob.getStatus()) {
-            case PENDING:
-            case PROCESSING:
-                throw new ApiException(ErrorCode.ACCEPTED, "AI가 현재 이력서를 분석 중입니다.");
-            case FAILED:
-                throw new ApiException(ErrorCode.INTERNAL_ERROR, "분석 중 오류가 발생했습니다: " + recentJob.getErrorMessage());
-            case SUCCEEDED:
-                throw new ApiException(ErrorCode.INTERNAL_ERROR, "분석은 완료되었으나 결과 데이터가 없습니다.");
-            default:
-                throw new ApiException(ErrorCode.NOT_FOUND, "결과를 찾을 수 없습니다.");
-        }
+        throw new ApiException(ErrorCode.ACCEPTED, "AI 분석 대기 중입니다.");
     }
 
     @Transactional
