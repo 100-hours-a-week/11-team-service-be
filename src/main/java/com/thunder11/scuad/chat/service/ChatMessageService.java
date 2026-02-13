@@ -282,6 +282,7 @@ public class ChatMessageService {
         nicknameMap.put(userId, senderNickname);
 
         // 10. 파일 정보 조회
+        // FIXME: ClassCastException 방지를 위해 Object[] 타입 명시 필요
         Map<Long, FileInfo> fileInfoMap = new HashMap<>();
         if (savedMessage.getFileId() != null) {
             fileObjectRepository.findFileInfoById(savedMessage.getFileId())
