@@ -61,6 +61,7 @@ public class ChatMessageService {
                         .fileName(info.fileName)
                         .fileSize(info.fileSize)
                         .contentType(info.contentType)
+                        .fileUrl(null)
                         .build();
             }
         }
