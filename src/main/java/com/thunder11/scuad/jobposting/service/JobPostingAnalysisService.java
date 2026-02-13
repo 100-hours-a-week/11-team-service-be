@@ -54,6 +54,7 @@ public class JobPostingAnalysisService {
     private final CompanyAliasRepository companyAliasRepository;
     private final SkillRepository skillRepository;
     private final SkillAliasRepository skillAliasRepository;
+    private final JobPostingManagementService jobPostingManagementService;
 
     @Transactional
     public JobAnalysisResultResponse analyze(String url, Long userId) {
@@ -67,22 +68,30 @@ public class JobPostingAnalysisService {
             JobPost jobPost = existingJobPost.get();
             JobMaster jobMaster = jobPost.getJobMaster();
 
-            log.info("URL 중복 발견 기존 공고 반환: ID{}", jobPost.getId());
+            // If DRAFT and same user -> Delete and re-analyze
+            if (jobPost.getRegistrationStatus() == RegistrationStatus.DRAFT && jobPost.getCreatedBy().equals(userId)) {
+                log.info("기존 DRAFT 공고 삭제 후 재분석: ID {}", jobPost.getId());
+                jobPostingManagementService.deleteJobPosting(jobMaster.getId(), userId);
+                // Proceed to new analysis below...
+            } else {
+                log.info("URL 중복 발견 기존 공고 반환: ID{}", jobPost.getId());
 
-            return JobAnalysisResultResponse.builder()
-                    .jobMasterId(jobMaster.getId())
-                    .jobPostingId(jobPost.getId())
-                    .isExisting(true)
-                    .companyName(jobMaster.getCompany().getName())
-                    .jobTitle(jobPost.getRawJobTitle())
-                    .mainTasks(jobMaster.getMainTasks())
-                    .skills(jobMaster.getJobMasterSkills().stream()
-                            .map(jms -> jms.getSkill().getName())
-                            .toList())
-                    .aiSummary(jobMaster.getAiSummary())
-                    .startDate(jobMaster.getStartDate())
-                    .status(jobMaster.getStatus().name())
-                    .build();
+                return JobAnalysisResultResponse.builder()
+                        .jobMasterId(jobMaster.getId())
+                        .jobPostingId(jobPost.getId())
+                        .isExisting(true)
+                        .companyName(jobMaster.getCompany().getName())
+                        .jobTitle(jobPost.getRawJobTitle())
+                        .mainTasks(jobMaster.getMainTasks())
+                        .skills(jobMaster.getJobMasterSkills().stream()
+                                .map(jms -> jms.getSkill().getName())
+                                .toList())
+                        .aiSummary(jobMaster.getAiSummary())
+                        .startDate(jobMaster.getStartDate())
+                        .status(jobMaster.getStatus().name())
+                        .registrationStatus(jobPost.getRegistrationStatus().name())
+                        .build();
+            }
         }
 
         AiJobAnalysisRequest aiRequest = AiJobAnalysisRequest.builder()

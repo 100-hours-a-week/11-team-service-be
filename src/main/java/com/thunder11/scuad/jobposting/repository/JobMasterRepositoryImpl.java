@@ -14,9 +14,11 @@ import org.springframework.util.StringUtils;
 
 import lombok.RequiredArgsConstructor;
 
-import com.querydsl.core.types.Order;
+import com.querydsl.core.Tuple;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.CaseBuilder;
+import com.querydsl.core.types.dsl.NumberExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import com.thunder11.scuad.jobposting.domain.JobMaster;
@@ -76,11 +78,21 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
                 .or(company.name.contains(keyword));
     }
 
-    private OrderSpecifier<?> getOrderSpecifier(String sort) {
+    private OrderSpecifier[] getOrderSpecifier(String sort) {
         if ("DEADLINE_ASC".equalsIgnoreCase(sort)) {
-            return new OrderSpecifier<>(Order.ASC, jobMaster.endDate);
+            return new OrderSpecifier[] {
+                    getStatusRank().asc(),
+                    jobMaster.endDate.asc(),
+                    jobMaster.id.desc()
+            };
         }
-        return new OrderSpecifier<>(Order.DESC, jobMaster.id);
+        return new OrderSpecifier[] { jobMaster.id.desc() };
+    }
+
+    private NumberExpression<Integer> getStatusRank() {
+        return new CaseBuilder()
+                .when(jobMaster.status.eq(JobStatus.OPEN)).then(1)
+                .otherwise(2);
     }
 
     private BooleanExpression cursorCondition(Long cursorId, String sort) {
@@ -88,17 +100,25 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
             return null;
 
         if ("DEADLINE_ASC".equalsIgnoreCase(sort)) {
-            LocalDate cursorEndDate = queryFactory
-                    .select(jobMaster.endDate)
+            Tuple cursorData = queryFactory
+                    .select(jobMaster.endDate, jobMaster.status)
                     .from(jobMaster)
                     .where(jobMaster.id.eq(cursorId))
                     .fetchOne();
 
-            if (cursorEndDate == null)
+            if (cursorData == null)
                 return null;
 
-            return jobMaster.endDate.gt(cursorEndDate)
-                    .or(jobMaster.endDate.eq(cursorEndDate).and(jobMaster.id.lt(cursorId)));
+            LocalDate cursorEndDate = cursorData.get(jobMaster.endDate);
+            JobStatus cursorStatus = cursorData.get(jobMaster.status);
+            Integer cursorRank = (cursorStatus == JobStatus.OPEN) ? 1 : 2;
+
+            NumberExpression<Integer> statusRank = getStatusRank();
+
+            return statusRank.gt(cursorRank)
+                    .or(statusRank.eq(cursorRank).and(jobMaster.endDate.gt(cursorEndDate)))
+                    .or(statusRank.eq(cursorRank).and(jobMaster.endDate.eq(cursorEndDate))
+                            .and(jobMaster.id.lt(cursorId)));
         }
 
         return jobMaster.id.lt(cursorId);

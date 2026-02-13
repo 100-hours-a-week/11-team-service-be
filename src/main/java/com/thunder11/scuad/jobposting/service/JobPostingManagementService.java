@@ -3,6 +3,8 @@ package com.thunder11.scuad.jobposting.service;
 import java.util.List;
 import java.util.Map;
 
+import jakarta.persistence.EntityManager;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,12 +36,12 @@ public class JobPostingManagementService {
     private final JobMasterRepository jobMasterRepository;
     private final JobMasterSkillRepository jobMasterSkillRepository;
     private final ChatRoomRepository chatRoomRepository;
+    private final EntityManager entityManager;
 
     @Transactional(readOnly = true)
     public Map<String, Object> getJobPostings(JobPostingSearchCondition condition) {
         List<JobMaster> masters = jobMasterRepository.searchJobPostings(condition);
 
-        // 채팅방 개수 일괄 조회
         List<Long> masterIds = masters.stream().map(JobMaster::getId).toList();
         Map<Long, Long> chatCounts = chatRoomRepository.countActiveRoomsByJobMasterIds(masterIds)
                 .stream()
@@ -109,11 +111,11 @@ public class JobPostingManagementService {
 
         aiServiceClient.deleteJobAnalysis(jobMaster.getJobPosts().get(0).getAiJobId());
 
+        entityManager.detach(jobMaster);
         jobMasterSkillRepository.deleteHardByJobMasterId(jobMasterId);
 
         jobMaster.getJobPosts().forEach(p -> jobPostRepository.deleteHardById(p.getId()));
 
-        // JobMaster 삭제
         jobMasterRepository.deleteHardById(jobMasterId);
     }
 }
