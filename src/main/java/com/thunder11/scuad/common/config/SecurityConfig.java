@@ -1,19 +1,16 @@
 package com.thunder11.scuad.common.config;
 
 import java.util.List;
-import java.util.ArrayList;
 import org.springframework.http.HttpMethod;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -61,6 +58,8 @@ public class SecurityConfig {
                         // Actuator 엔드포인트 퍼블릭 허용
                         .requestMatchers("/actuator/**").permitAll()
                         // 채용공고 조회는 퍼블릭 허용 (임시)
+                        .requestMatchers("/api/v1/job-postings/**").permitAll()
+                        .requestMatchers("/api/v1/job-postings").permitAll()
 
                         // 나머지 URL은 인증 필요
                         .anyRequest().authenticated())

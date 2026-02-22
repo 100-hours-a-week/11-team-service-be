@@ -1,6 +1,7 @@
 package com.thunder11.scuad.jobposting.service;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.scheduling.annotation.Async;
@@ -32,46 +33,46 @@ import com.thunder11.scuad.jobposting.domain.JobMaster;
 @RequiredArgsConstructor
 public class AiEvaluationWorker {
 
-        private final AiEvalJobRepository aiEvalJobRepository;
-        private final AiApplicationEvaluationRepository aiApplicationEvaluationRepository;
-        private final JobMasterRepository jobMasterRepository;
-        private final AiServiceClient aiServiceClient;
+    private final AiEvalJobRepository aiEvalJobRepository;
+    private final AiApplicationEvaluationRepository aiApplicationEvaluationRepository;
+    private final JobMasterRepository jobMasterRepository;
+    private final AiServiceClient aiServiceClient;
 
         @Async
         @Transactional(propagation = Propagation.REQUIRES_NEW)
         @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
         public void processEvaluationAsync(AiEvaluationCreateEvent event) {
 
-                log.info("AI 종합 분석 작업시작: UserId={}, JobPostingId={}",
-                                event.getUserId(), event.getJobPostingId());
+        log.info("AI 종합 분석 작업시작: UserId={}, JobPostingId={}",
+                        event.getUserId(), event.getJobPostingId());
 
-                AiEvalJob aiEvalJob = aiEvalJobRepository
-                                .findFirstByRequestedByUserIdAndJobApplicationJobMasterIdOrderByIdDesc(
-                                                event.getUserId(),
-                                                event.getJobPostingId())
-                                .orElseThrow(() -> new IllegalStateException("AI 평가 작업을 찾을 수 없습니다."));
+        AiEvalJob aiEvalJob = aiEvalJobRepository
+                        .findFirstByRequestedByUserIdAndJobApplicationJobMasterIdOrderByIdDesc(
+                                        event.getUserId(),
+                                        event.getJobPostingId())
+                        .orElseThrow(() -> new IllegalStateException("AI 평가 작업을 찾을 수 없습니다."));
 
-                Long aiEvalJobId = aiEvalJob.getId();
+        Long aiEvalJobId = aiEvalJob.getId();
 
-                try {
-                        AiEvaluationAnalysisRequest request = AiEvaluationAnalysisRequest.builder()
-                                        .userId(String.valueOf(event.getUserId()))
-                                        .jobPostingId(String.valueOf(event.getJobPostingId()))
-                                        .build();
+        try {
+                AiEvaluationAnalysisRequest request = AiEvaluationAnalysisRequest.builder()
+                                .userId(String.valueOf(event.getUserId()))
+                                .jobPostingId(String.valueOf(event.getJobPostingId()))
+                                .build();
 
-                        AiEvaluationResultResponse result = aiServiceClient.analyzeEvaluation(request);
+                AiEvaluationResultResponse result = aiServiceClient.analyzeEvaluation(request);
 
-                        saveEvaluationResult(aiEvalJob.getJobApplication(), result);
+                saveEvaluationResult(aiEvalJob.getJobApplication(), result);
 
-                        aiEvalJob.complete();
-                        aiEvalJobRepository.save(aiEvalJob);
-                        log.info("AI 종합 분석 성공: JobId={}", aiEvalJobId);
-                } catch (Exception e) {
-                        log.error("AI Worker Failed: JobID={}, Msg={}", aiEvalJobId, e.getMessage());
-                        aiEvalJob.fail(e.getMessage());
-                        aiEvalJobRepository.save(aiEvalJob);
-                }
+                aiEvalJob.complete();
+                aiEvalJobRepository.save(aiEvalJob);
+                log.info("AI 종합 분석 성공: JobId={}", aiEvalJobId);
+        } catch (Exception e) {
+                log.error("AI Worker Failed: JobID={}, Msg={}", aiEvalJobId, e.getMessage());
+                aiEvalJob.fail(e.getMessage());
+                aiEvalJobRepository.save(aiEvalJob);
         }
+    }
 
         private void saveEvaluationResult(JobApplication application, AiEvaluationResultResponse result) {
 
@@ -113,4 +114,5 @@ public class AiEvaluationWorker {
                         log.warn("평가 결과 중복 저장 감지(무시): applicationId={}, msg={}", application.getId(), e.getMessage());
                 }
         }
+    }
 }

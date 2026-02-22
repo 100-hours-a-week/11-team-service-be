@@ -2,10 +2,7 @@ package com.thunder11.scuad.chat.controller;
 
 import com.thunder11.scuad.chat.dto.request.ChatRoomCreateRequest;
 import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
-import com.thunder11.scuad.chat.dto.response.ChatMessageListResponse;
-import com.thunder11.scuad.chat.dto.response.ChatMessageResponse;
-import com.thunder11.scuad.chat.dto.response.ChatRoomDetailResponse;
-import com.thunder11.scuad.chat.dto.response.ChatRoomMemberListResponse;
+import com.thunder11.scuad.chat.dto.response.*;
 import com.thunder11.scuad.chat.domain.type.MessageType;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,7 +13,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import com.thunder11.scuad.auth.security.UserPrincipal;
-import com.thunder11.scuad.chat.dto.response.ChatRoomListResponse;
 import com.thunder11.scuad.chat.service.ChatMessageService;
 import com.thunder11.scuad.chat.service.ChatRoomService;
 import com.thunder11.scuad.common.response.ApiResponse;
@@ -289,6 +285,30 @@ public class ChatRoomController {
                 HttpStatus.OK.value(),
                 "CHAT_ROOM_CLOSED",
                 "채팅방 종료 완료"
+        );
+    }
+
+    // 내가 참여 중인 채팅방 목록 조회
+    @GetMapping("/users/me/chat-rooms")
+    public ApiResponse<MyChatRoomListResponse> getMyChatRooms(
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(defaultValue = "20") int size,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("GET /api/v1/users/me/chat-rooms - cursor={}, size={}, userId={}",
+                cursor, size, userPrincipal.getUserId());
+
+        MyChatRoomListResponse response = chatRoomService.getMyChatRooms(
+                userPrincipal.getUserId(),
+                cursor,
+                size
+        );
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "SUCCESS",
+                "내 채팅방 목록 조회 성공",
+                response
         );
     }
 }

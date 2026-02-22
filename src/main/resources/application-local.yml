@@ -60,5 +60,16 @@ ai:
   service:
     url: ${AI_SERVICE_URL}
 
+  jpa:
+    properties:
+      hibernate:
+        show_sql: true
+        format_sql: true
+        highlight_sql: true
+        session:
+          events:
+            log:
+              LOG_QUERIES_SLOWER_THAN_MS: 1000
+
   flyway: 
       enabled: false

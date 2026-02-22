@@ -1,6 +1,7 @@
 package com.thunder11.scuad.chat.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -35,4 +36,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             @Param("chatRoomId") Long chatRoomId,
             @Param("afterMessageId") Long afterMessageId
     );
+
+    Optional<ChatMessage> findTopByChatRoomIdOrderBySentAtDesc(Long chatRoomId);
 }
