@@ -4,6 +4,7 @@ import com.thunder11.scuad.chat.dto.request.ChatRoomCreateRequest;
 import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
 import com.thunder11.scuad.chat.dto.response.*;
 import com.thunder11.scuad.chat.domain.type.MessageType;
+import com.thunder11.scuad.chat.service.ChatMemberDocumentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +28,7 @@ public class ChatRoomController {
     private final ChatRoomService chatRoomService;
     private final ChatMessageService chatMessageService;
     private final com.thunder11.scuad.file.service.FileStorageService fileStorageService;
+    private final ChatMemberDocumentService chatMemberDocumentService;
 
     // 공고별 채팅방 목록 조회
     @GetMapping("/job-postings/{jobMasterId}/chat-rooms")
@@ -308,6 +310,54 @@ public class ChatRoomController {
                 HttpStatus.OK.value(),
                 "SUCCESS",
                 "내 채팅방 목록 조회 성공",
+                response
+        );
+    }
+
+    // 채팅방 멤버 이력서 조회
+    @GetMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}/documents/resume")
+    public ApiResponse<MemberDocumentResponse> getMemberResume(
+            @PathVariable Long chatRoomId,
+            @PathVariable Long chatRoomMemberId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("GET /api/v1/chat-rooms/{}/members/{}/documents/resume - userId={}",
+                chatRoomId, chatRoomMemberId, userPrincipal.getUserId());
+
+        MemberDocumentResponse response = chatMemberDocumentService.getMemberResume(
+                chatRoomId,
+                userPrincipal.getUserId(),
+                chatRoomMemberId
+        );
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "SUCCESS",
+                "이력서 조회 성공",
+                response
+        );
+    }
+
+    // 채팅방 멤버 포트폴리오 조회
+    @GetMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}/documents/portfolio")
+    public ApiResponse<MemberDocumentResponse> getMemberPortfolio(
+            @PathVariable Long chatRoomId,
+            @PathVariable Long chatRoomMemberId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("GET /api/v1/chat-rooms/{}/members/{}/documents/portfolio - userId={}",
+                chatRoomId, chatRoomMemberId, userPrincipal.getUserId());
+
+        MemberDocumentResponse response = chatMemberDocumentService.getMemberPortfolio(
+                chatRoomId,
+                userPrincipal.getUserId(),
+                chatRoomMemberId
+        );
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "SUCCESS",
+                "포트폴리오 조회 성공",
                 response
         );
     }
