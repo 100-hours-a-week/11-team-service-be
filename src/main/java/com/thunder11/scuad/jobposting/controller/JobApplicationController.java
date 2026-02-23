@@ -44,6 +44,28 @@ public class JobApplicationController {
                 return ApiResponse.of(200, "AI_EVALUATION_FOUND", "종합 평가 결과를 조회했습니다.", result);
         }
 
+        @GetMapping("/{applicationId}/analyses/resume")
+        public ApiResponse<AiResumeAnalysisResponse> getResumeAnalysisResult(
+                @PathVariable("applicationId") Long applicationId,
+                @AuthenticationPrincipal UserPrincipal principal) {
+            AiResumeAnalysisResponse result = jopApplicationAnalysisService
+                    .getResumeAnalysisResult(principal.getUserId(), applicationId);
+
+            return ApiResponse.of(200, "RESUME_ANALYSIS_FOUND", "이력서 분석 결과를 조회했습니다.", result);
+        }
+
+        @GetMapping("{applicationId}/analyses/portfolio")
+        public ApiResponse<AiPortfolioAnalysisResponse> getPortfolioAnalysisResult(
+                @PathVariable("applicationId") Long applicationId,
+                @AuthenticationPrincipal UserPrincipal principal) {
+            AiPortfolioAnalysisResponse result = jopApplicationAnalysisService
+                    .getPortfolioAnalysisResult(principal.getUserId(), applicationId);
+
+            return ApiResponse.of(200, "PORTFOLIO_ANALYSIS_FOUND", "포트폴리오 분석 결과를 조회했습니다.", result);
+        }
+
+
+
         @GetMapping("/me")
         public ApiResponse<List<MyApplicationResponse>> getMyApplications(
                 @RequestParam(required = false) String keyword,
