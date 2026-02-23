@@ -49,6 +49,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 카카오 OAuth 관련 URL은 모두 퍼블릭 허용
                         .requestMatchers("/api/v1/auth/kakao/**").permitAll()
+                        // loadtest 전용 토큰 발급 API (핸들러는 loadtest profile에서만 존재)
+                        .requestMatchers("/api/v1/auth/test/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-postings").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-postings/{jobMasterId}").permitAll()
                         // 헬스 체크는 퍼블릭 허용

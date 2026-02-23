@@ -1,0 +1,9 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+# loadtest 전용 토큰 발급 API 보호용 시크릿
+loadtest:
+  secret: ${LOADTEST_SECRET:change-me}
