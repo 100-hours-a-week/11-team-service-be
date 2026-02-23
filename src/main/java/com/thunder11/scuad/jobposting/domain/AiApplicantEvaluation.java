@@ -10,16 +10,14 @@ import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.Where;
 import org.hibernate.type.SqlTypes;
 
-import lombok.AccessLevel;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import com.thunder11.scuad.common.entity.BaseTimeEntity;
 
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Table(name = "ai_applicant_evaluation")
 @SQLDelete(sql = "UPDATE ai_applicant_evaluation SET deleted_at = NOW() WHERE evaluation_id = ?")
 @Where(clause = "deleted_at IS NULL")

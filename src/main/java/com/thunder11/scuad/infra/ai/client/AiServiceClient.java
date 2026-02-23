@@ -12,10 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import com.thunder11.scuad.common.exception.ApiException;
 import com.thunder11.scuad.common.exception.ErrorCode;
 import com.thunder11.scuad.infra.ai.dto.request.AiJobAnalysisRequest;
-import com.thunder11.scuad.infra.ai.dto.response.AiApiResponse;
-import com.thunder11.scuad.infra.ai.dto.response.AiJobAnalysisResponse;
 import com.thunder11.scuad.infra.ai.dto.request.AiEvaluationAnalysisRequest;
-import com.thunder11.scuad.infra.ai.dto.response.AiEvaluationResultResponse;
+import com.thunder11.scuad.infra.ai.dto.response.*;
 
 @Slf4j
 @Component
@@ -83,6 +81,42 @@ public class AiServiceClient {
             return response.getData();
         } catch (Exception e) {
             throw new ApiException(ErrorCode.AI_SERVICE_ERROR, "AI 호출 실패: " + e.getMessage());
+        }
+    }
+
+    public AiResumeAnalysisResponse analyzeResume(AiEvaluationAnalysisRequest request) {
+        log.info("AI 이력서 분석 요청: User={}, Job={}",
+                request.getUserId(), request.getJobPostingId());
+        try {
+            AiApiResponse<AiResumeAnalysisResponse> response =
+                    webClient.post()
+                            .uri(aiServiceUrl + "/ai/api/v1/resume/analyze")
+                            .bodyValue(request)
+                            .retrieve()
+                            .bodyToMono(new ParameterizedTypeReference<AiApiResponse<AiResumeAnalysisResponse>>() {})
+                            .block();
+            validateAiResponse(response);
+
+            return response.getData();
+        } catch (Exception e) {
+            throw new ApiException(ErrorCode.AI_SERVICE_ERROR, "AI 이력서 분석 호출 실패: " + e.getMessage());
+        }
+    }
+
+    public AiPortfolioAnalysisResponse analyzePortfolio(AiEvaluationAnalysisRequest request) {
+        log.info("AI 포트폴리오 분석 요청: User={}, Job={}", request.getUserId(), request.getJobPostingId());
+        try {
+            AiApiResponse<AiPortfolioAnalysisResponse> response = webClient.post()
+                    .uri(aiServiceUrl + "/ai/api/v1/portfolio/analyze")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<AiApiResponse<AiPortfolioAnalysisResponse>>() {})
+                    .block();
+            validateAiResponse(response);
+
+            return response.getData();
+        } catch (Exception e) {
+            throw new ApiException(ErrorCode.AI_SERVICE_ERROR, "AI 포트폴리오 분석 호출 실패: " + e.getMessage());
         }
     }
 }
