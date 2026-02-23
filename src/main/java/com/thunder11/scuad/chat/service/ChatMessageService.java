@@ -3,6 +3,7 @@ package com.thunder11.scuad.chat.service;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import com.thunder11.scuad.auth.repository.UserRepository;
@@ -186,8 +187,8 @@ public class ChatMessageService {
             List<Object[]> fileInfos = fileObjectRepository.findFileInfosByIds(fileIds);
             fileInfoMap = fileInfos.stream()
                     .collect(Collectors.toMap(
-                            arr -> (Long) arr[0],
-                            arr -> new FileInfo(
+                            (Object[] arr) -> (Long) arr[0],
+                            (Object[] arr) -> new FileInfo(
                                     (Long) arr[0],      // fileId
                                     (String) arr[1],    // fileName
                                     (String) arr[2],    // contentType
@@ -285,16 +286,17 @@ public class ChatMessageService {
         // FIXME: ClassCastException 방지를 위해 Object[] 타입 명시 필요
         Map<Long, FileInfo> fileInfoMap = new HashMap<>();
         if (savedMessage.getFileId() != null) {
-            fileObjectRepository.findFileInfoById(savedMessage.getFileId())
-                    .ifPresent((Object[] arr) -> {
-                        FileInfo info = new FileInfo(
-                                (Long) arr[0],      // fileId
-                                (String) arr[1],    // fileName
-                                (String) arr[2],    // contentType
-                                (Long) arr[3]       // fileSize
-                        );
-                        fileInfoMap.put(info.fileId, info);
-                    });
+            Optional<Object[]> fileInfoOpt = fileObjectRepository.findFileInfoById(savedMessage.getFileId());
+            if (fileInfoOpt.isPresent()) {
+                Object[] arr = fileInfoOpt.get();
+                FileInfo info = new FileInfo(
+                        (Long) arr[0],      // fileId
+                        (String) arr[1],    // fileName
+                        (String) arr[2],    // contentType
+                        (Long) arr[3]       // fileSize
+                );
+                fileInfoMap.put(info.fileId, info);
+            }
         }
 
         return convertToResponse(savedMessage, nicknameMap, fileInfoMap);
