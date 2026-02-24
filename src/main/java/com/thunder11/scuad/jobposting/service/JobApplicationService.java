@@ -69,7 +69,7 @@ public class JobApplicationService {
             saveDocument(application, "PORTFOLIO", portfolio);
         }
 
-        analysisService.createEvaluationJob(application.getId(), userId, "EVALUATION");
+        analysisService.createEvaluationJob(application.getId(), userId, "ALL");
 
         return application.getId();
     }
