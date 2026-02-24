@@ -24,8 +24,7 @@ import com.thunder11.scuad.common.entity.BaseTimeEntity;
                         columnList = "my_application_id, competitor_application_id")
         }
 )
-@SQLDelete(sql = "UPDATE ai_applicant_comparison SET deleted_at = NOW() WHERE comparison_id = ?")
-@SQLRestriction("deleted_at IS NULL")
+
 public class AiApplicantComparison extends BaseTimeEntity {
 
     @Id
