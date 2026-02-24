@@ -290,8 +290,9 @@ public class ChatRoomService {
         }
 
         // 6. 중복 방 생성 확인
-        if (chatRoomRepository.existsByJobMasterIdAndCreatedByAndDeletedAtIsNull(jobMasterId, userId)) {
-            log.warn("이미 해당 공고에 생성한 채팅방이 있습니다: jobMasterId={}, userId={}", jobMasterId, userId);
+        if (chatRoomRepository.existsByJobMasterIdAndCreatedByAndDeletedAtIsNullAndStatus(
+                jobMasterId, userId, RoomStatus.ACTIVE)) {
+            log.warn("이미 해당 공고에 활성 채팅방이 있습니다: jobMasterId={}, userId={}", jobMasterId, userId);
             throw new ApiException(ErrorCode.CHAT_ROOM_ALREADY_EXISTS);
         }
 

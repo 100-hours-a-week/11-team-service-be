@@ -21,7 +21,8 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
         long countByJobMasterIdAndStatusAndDeletedAtIsNull(Long jobMasterId, RoomStatus status);
 
         // 방장이 특정 공고에 이미 방을 만들었는지 확인
-        boolean existsByJobMasterIdAndCreatedByAndDeletedAtIsNull(Long jobMasterId, Long createdBy);
+        boolean existsByJobMasterIdAndCreatedByAndDeletedAtIsNullAndStatus(
+                Long jobMasterId, Long createdBy, RoomStatus status);
 
         // 공고별 채팅방 목록 조회 (커서 기반 페이징)
         @Query("SELECT cr FROM ChatRoom cr " +
