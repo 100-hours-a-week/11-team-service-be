@@ -51,6 +51,7 @@ public enum ErrorCode {
     FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "FILE_NOT_FOUND", "파일을 찾을 수 없습니다."),
     FILE_DOWNLOAD_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_DOWNLOAD_ERROR", "파일 다운로드 URL 생성에 실패했습니다."),
     INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "INVALID_INPUT_VALUE", "since와 cursor를 동시에 사용할 수 없습니다"),
+    COMPARISON_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "COMPARISON_SELF_NOT_ALLOWED", "자기 자신과는 비교할 수 없습니다."),
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", "제출된 문서가 없습니다.");
 
     private final HttpStatus status;

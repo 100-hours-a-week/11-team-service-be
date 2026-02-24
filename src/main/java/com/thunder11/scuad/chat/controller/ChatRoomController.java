@@ -4,6 +4,7 @@ import com.thunder11.scuad.chat.dto.request.ChatRoomCreateRequest;
 import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
 import com.thunder11.scuad.chat.dto.response.*;
 import com.thunder11.scuad.chat.domain.type.MessageType;
+import com.thunder11.scuad.chat.service.ChatMemberComparisonService;
 import com.thunder11.scuad.chat.service.ChatMemberDocumentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -29,6 +30,7 @@ public class ChatRoomController {
     private final ChatMessageService chatMessageService;
     private final com.thunder11.scuad.file.service.FileStorageService fileStorageService;
     private final ChatMemberDocumentService chatMemberDocumentService;
+    private final ChatMemberComparisonService chatMemberComparisonService;
 
     // 공고별 채팅방 목록 조회
     @GetMapping("/job-postings/{jobMasterId}/chat-rooms")
@@ -358,6 +360,30 @@ public class ChatRoomController {
                 HttpStatus.OK.value(),
                 "SUCCESS",
                 "포트폴리오 조회 성공",
+                response
+        );
+    }
+
+    // 채팅방 멤버와 나의 AI 비교 분석
+    @GetMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}/comparison")
+    public ApiResponse<ComparisonResponse> compareWithMember(
+            @PathVariable Long chatRoomId,
+            @PathVariable Long chatRoomMemberId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("GET /api/v1/chat-rooms/{}/members/{}/comparison - userId={}",
+                chatRoomId, chatRoomMemberId, userPrincipal.getUserId());
+
+        ComparisonResponse response = chatMemberComparisonService.compare(
+                chatRoomId,
+                userPrincipal.getUserId(),
+                chatRoomMemberId
+        );
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "SUCCESS",
+                "비교 분석 결과 조회 성공",
                 response
         );
     }
