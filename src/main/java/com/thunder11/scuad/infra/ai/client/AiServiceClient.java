@@ -1,5 +1,6 @@
 package com.thunder11.scuad.infra.ai.client;
 
+import com.thunder11.scuad.infra.ai.dto.request.AiCompareRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.scheduling.annotation.Async;
@@ -117,6 +118,25 @@ public class AiServiceClient {
             return response.getData();
         } catch (Exception e) {
             throw new ApiException(ErrorCode.AI_SERVICE_ERROR, "AI 포트폴리오 분석 호출 실패: " + e.getMessage());
+        }
+    }
+
+    public AiCompareResponse compareApplicants(AiCompareRequest request) {
+        log.info("AI 지원자 비교 요청: userId={}, competitor={}, jobPostingId={}",
+                request.getUserId(), request.getCompetitor(), request.getJobPostingId());
+
+        try {
+            AiApiResponse<AiCompareResponse> response = webClient.post()
+                    .uri(aiServiceUrl + "/ai/api/v1/applicant/compare")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<AiApiResponse<AiCompareResponse>>() {})
+                    .block();
+
+            validateAiResponse(response);
+            return response.getData();
+        } catch (Exception e) {
+            throw new ApiException(ErrorCode.AI_SERVICE_ERROR, "AI 비교 분석 호출 실패: " + e.getMessage());
         }
     }
 }
