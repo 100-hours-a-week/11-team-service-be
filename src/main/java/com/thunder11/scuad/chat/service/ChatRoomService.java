@@ -290,8 +290,9 @@ public class ChatRoomService {
         }
 
         // 6. 중복 방 생성 확인
-        if (chatRoomRepository.existsByJobMasterIdAndCreatedByAndDeletedAtIsNull(jobMasterId, userId)) {
-            log.warn("이미 해당 공고에 생성한 채팅방이 있습니다: jobMasterId={}, userId={}", jobMasterId, userId);
+        if (chatRoomRepository.existsByJobMasterIdAndCreatedByAndDeletedAtIsNullAndStatus(
+                jobMasterId, userId, RoomStatus.ACTIVE)) {
+            log.warn("이미 해당 공고에 활성 채팅방이 있습니다: jobMasterId={}, userId={}", jobMasterId, userId);
             throw new ApiException(ErrorCode.CHAT_ROOM_ALREADY_EXISTS);
         }
 
@@ -496,10 +497,21 @@ public class ChatRoomService {
                 .findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.CHAT_MEMBER_NOT_FOUND));
 
-        // 3. 방장은 퇴장 불가 (방을 종료해야 함)
+        // 3. 방장인 경우 채팅방 종료 처리
+        // 수정 이유: 방장 입장에서 나가기와 종료하기는 동일한 결과이므로
+        //           나가기 시도 시 에러를 던지는 대신 채팅방을 자동 종료
         if (member.getRole() == MemberRole.HOST) {
-            log.warn("방장의 퇴장 시도: chatRoomId={}, userId={}", chatRoomId, userId);
-            throw new ApiException(ErrorCode.CHAT_ROOM_HOST_ONLY);
+            log.info("방장의 나가기 시도 → 채팅방 자동 종료: chatRoomId={}, userId={}", chatRoomId, userId);
+            chatRoom.close();
+            chatRoomRepository.save(chatRoom);
+
+            ChatMessage systemMessage = ChatMessage.createSystemMessage(
+                    chatRoomId,
+                    "채팅방이 종료되었습니다."
+            );
+            chatMessageRepository.save(systemMessage);
+            log.info("방장 나가기로 인한 채팅방 종료 완료: chatRoomId={}", chatRoomId);
+            return;
         }
 
         // 4. 닉네임 조회 (삭제 전에 조회해야 함)
@@ -516,7 +528,6 @@ public class ChatRoomService {
                 chatRoomId,
                 nickname + "님이 퇴장했습니다."
         );
-
         chatMessageRepository.save(systemMessage);
         log.info("퇴장 시스템 메시지 생성 완료: chatRoomId={}, userId={}", chatRoomId, userId);
     }

@@ -33,6 +33,9 @@ public class AuthController {
     @Value("${app.frontend-url}")
     private String frontendUrlBase;
 
+    @Value("${app.cookie-domain}")
+    private String cookieDomain;
+
     // 카카오 로그인 시작 (카카오 인증 페이지로 리다이렉트)
     // 프론트엔드가 이 엔드포인트를 호출하면 카카오 OAuth 페이지로 이동
     @GetMapping("/kakao/login")
@@ -67,6 +70,7 @@ public class AuthController {
                 .path("/api/v1/auth")              // 토큰 재발급 API에만 쿠키 전송
                 .maxAge(14 * 24 * 60 * 60)         // 14일 (초 단위)
                 .sameSite("Lax")                   // CSRF 기본 방어
+                .domain(cookieDomain)
                 .build();
 
         response.addHeader("Set-Cookie", refreshTokenCookie.toString());
@@ -104,6 +108,7 @@ public class AuthController {
                 .path("/api/v1/auth")              // 토큰 재발급 API에만 쿠키 전송
                 .maxAge(14 * 24 * 60 * 60)         // 14일 (초 단위)
                 .sameSite("Lax")                   // CSRF 기본 방어
+                .domain(cookieDomain)
                 .build();
 
         response.addHeader("Set-Cookie", refreshTokenCookie.toString());
@@ -132,6 +137,7 @@ public class AuthController {
                 .path("/api/v1/auth")
                 .maxAge(0)  // 즉시 만료
                 .sameSite("Lax")
+                .domain(cookieDomain)
                 .build();
 
         response.addHeader("Set-Cookie", expiredCookie.toString());
