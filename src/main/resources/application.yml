@@ -80,6 +80,7 @@ server:
 
 app:
   frontend-url: ${APP_FRONTEND_URL:https://www.scuad.kr}
+  cookie-domain: ${APP_COOKIE_DOMAIN:.scuad.kr}
 
 management:
   server:
