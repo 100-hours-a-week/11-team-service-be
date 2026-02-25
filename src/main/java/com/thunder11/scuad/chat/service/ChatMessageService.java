@@ -283,19 +283,24 @@ public class ChatMessageService {
         nicknameMap.put(userId, senderNickname);
 
         // 10. 파일 정보 조회
-        // FIXME: ClassCastException 방지를 위해 Object[] 타입 명시 필요
+        // findFileInfosByIds(List)를 재사용하여 ClassCastException 방지
+        // 이유: 단건 Optional<Object[]> 쿼리는 JPQL 다중 컬럼 반환 시 Object[][] 로 감싸져
+        //       arr[0]이 Long이 아닌 Object[]가 되어 ClassCastException 발생.
+        //       getMessages()에서 이미 검증된 List<Object[]> 방식으로 통일.
         Map<Long, FileInfo> fileInfoMap = new HashMap<>();
         if (savedMessage.getFileId() != null) {
-            Optional<Object[]> fileInfoOpt = fileObjectRepository.findFileInfoById(savedMessage.getFileId());
-            if (fileInfoOpt.isPresent()) {
-                Object[] arr = fileInfoOpt.get();
+            List<Object[]> fileInfos = fileObjectRepository.findFileInfosByIds(
+                    java.util.List.of(savedMessage.getFileId())
+            );
+            if (!fileInfos.isEmpty()) {
+                Object[] arr = fileInfos.get(0);
                 FileInfo info = new FileInfo(
                         (Long) arr[0],      // fileId
                         (String) arr[1],    // fileName
                         (String) arr[2],    // contentType
                         (Long) arr[3]       // fileSize
                 );
-                fileInfoMap.put(info.fileId, info);
+                fileInfoMap.put(info.fileId(), info);
             }
         }
 
