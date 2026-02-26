@@ -1,19 +1,30 @@
 spring:
+  # ── JPA ────────────────────────────────────────────────────────────
   jpa:
     hibernate:
-      ddl-auto: ${DDL_AUTO:validate}
+      ddl-auto: ${DDL_AUTO:validate}   # Flyway가 스키마를 관리하므로 validate 유지
     show-sql: ${SHOW_SQL:true}
     properties:
       hibernate:
         format_sql: true
         default_batch_fetch_size: 100
+        # 슬로우 쿼리 로깅: 1000ms 이상 걸리는 쿼리 출력 (N+1 탐지 등에 활용)
+        session:
+          events:
+            log:
+              LOG_QUERIES_SLOWER_THAN_MS: 1000
+
+  # ── Flyway ─────────────────────────────────────────────────────────
+  # 주의: spring.flyway가 두 번 선언되면 YAML은 마지막 값으로 덮어씀
+  #       → 이 블록 하나로만 관리
   flyway:
     enabled: true
-    clean-disabled: false
+    clean-disabled: false             # 로컬 전용: flyway clean 허용 (DB 초기화 시 사용)
     locations:
-      - classpath:db/migration
-      - classpath:db/migration/testdata  # 로컬 환경에서만 더미 데이터 로딩
+      - classpath:db/migration        # 공통 마이그레이션 (V1, V3 ...)
+      - classpath:db/testdata         # 로컬 전용 더미 데이터 (V2) - migration 하위폴더면 Flyway가 무시해서 분리
 
+  # ── Security / OAuth2 ──────────────────────────────────────────────
   security:
     oauth2:
       client:
@@ -35,6 +46,7 @@ spring:
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
 
+  # ── AWS S3 ─────────────────────────────────────────────────────────
   cloud:
     aws:
       credentials:
@@ -43,7 +55,7 @@ spring:
       s3:
         bucket: ${AWS_S3_BUCKET}
 
-# Custom Kakao Properties for KakaoOAuthClient
+# ── Kakao OAuth (KakaoOAuthClient 전용) ────────────────────────────
 kakao:
   client-id: ${KAKAO_CLIENT_ID}
   client-secret: ${KAKAO_CLIENT_SECRET}
@@ -51,25 +63,13 @@ kakao:
   token-uri: https://kauth.kakao.com/oauth/token
   user-info-uri: https://kapi.kakao.com/v2/user/me
 
+# ── JWT ────────────────────────────────────────────────────────────
 jwt:
   secret: ${JWT_SECRET}
   access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION}
   refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION}
 
+# ── AI Service ─────────────────────────────────────────────────────
 ai:
   service:
     url: ${AI_SERVICE_URL}
-
-  jpa:
-    properties:
-      hibernate:
-        show_sql: true
-        format_sql: true
-        highlight_sql: true
-        session:
-          events:
-            log:
-              LOG_QUERIES_SLOWER_THAN_MS: 1000
-
-  flyway: 
-      enabled: false
