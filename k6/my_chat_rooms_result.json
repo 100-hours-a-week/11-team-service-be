@@ -1,0 +1,273 @@
+{
+  "state": {
+    "testRunDurationMs": 30025.331,
+    "isStdOutTTY": true,
+    "isStdErrTTY": true
+  },
+  "metrics": {
+    "iterations": {
+      "contains": "default",
+      "values": {
+        "count": 280,
+        "rate": 9.325459226411192
+      },
+      "type": "counter"
+    },
+    "http_req_tls_handshaking": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 0,
+        "max": 0,
+        "p(90)": 0,
+        "p(95)": 0,
+        "avg": 0,
+        "min": 0
+      }
+    },
+    "vus_max": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "max": 10,
+        "value": 10,
+        "min": 10
+      }
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 1988560,
+        "rate": 66229.41142597228
+      }
+    },
+    "http_req_waiting": {
+      "contains": "time",
+      "values": {
+        "avg": 70.25391071428575,
+        "min": 40.413,
+        "med": 52.3365,
+        "max": 441.653,
+        "p(90)": 96.3771,
+        "p(95)": 102.78384999999999
+      },
+      "type": "trend"
+    },
+    "checks": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 1,
+        "passes": 840,
+        "fails": 0
+      }
+    },
+    "http_req_connecting": {
+      "contains": "time",
+      "values": {
+        "avg": 0.02287857142857143,
+        "min": 0,
+        "med": 0,
+        "max": 0.945,
+        "p(90)": 0,
+        "p(95)": 0
+      },
+      "type": "trend"
+    },
+    "request_count": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "rate": 9.325459226411192,
+        "count": 280
+      }
+    },
+    "vus": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 10,
+        "min": 10,
+        "max": 10
+      }
+    },
+    "http_req_duration{expected_response:true}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(90)": 97.2697,
+        "p(95)": 103.26114999999999,
+        "avg": 70.66748928571428,
+        "min": 40.702,
+        "med": 52.6785,
+        "max": 445.838
+      }
+    },
+    "my_chat_rooms_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 52.6785,
+        "max": 445.838,
+        "p(90)": 97.2697,
+        "p(95)": 103.26114999999999,
+        "avg": 70.66748928571428,
+        "min": 40.702
+      },
+      "thresholds": {
+        "p(95)<3000": {
+          "ok": true
+        },
+        "p(99)<5000": {
+          "ok": true
+        }
+      }
+    },
+    "data_sent": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 91000,
+        "rate": 3030.7742485836375
+      }
+    },
+    "http_req_blocked": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 0.001,
+        "med": 0.005,
+        "max": 2.341,
+        "p(90)": 0.015,
+        "p(95)": 0.023249999999999937,
+        "avg": 0.07889285714285718
+      }
+    },
+    "http_req_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 280
+      }
+    },
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 1072.2444784428571,
+        "min": 1041.368792,
+        "med": 1054.2853125000001,
+        "max": 1451.348209,
+        "p(90)": 1097.794725,
+        "p(95)": 1104.33355865
+      }
+    },
+    "error_rate": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 280
+      },
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      }
+    },
+    "http_reqs": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 280,
+        "rate": 9.325459226411192
+      }
+    },
+    "http_req_receiving": {
+      "contains": "time",
+      "values": {
+        "avg": 0.3804785714285718,
+        "min": 0.019,
+        "med": 0.2485,
+        "max": 4.722,
+        "p(90)": 0.5624000000000001,
+        "p(95)": 0.8941999999999994
+      },
+      "type": "trend"
+    },
+    "http_req_sending": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.03309999999999996,
+        "min": 0.004,
+        "med": 0.0155,
+        "max": 0.683,
+        "p(90)": 0.05320000000000001,
+        "p(95)": 0.08005
+      }
+    },
+    "http_req_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 70.66748928571428,
+        "min": 40.702,
+        "med": 52.6785,
+        "max": 445.838,
+        "p(90)": 97.2697,
+        "p(95)": 103.26114999999999
+      },
+      "thresholds": {
+        "p(95)<3000": {
+          "ok": true
+        }
+      }
+    }
+  },
+  "root_group": {
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": [],
+    "checks": [
+        {
+          "id": "6210a8cd14cd70477eba5c5e4cb3fb5f",
+          "passes": 280,
+          "fails": 0,
+          "name": "status is 200",
+          "path": "::status is 200"
+        },
+        {
+          "passes": 280,
+          "fails": 0,
+          "name": "response has chatRooms",
+          "path": "::response has chatRooms",
+          "id": "e224874a62efef8cdeb36aa134bef6fb"
+        },
+        {
+          "name": "response time < 3000ms",
+          "path": "::response time < 3000ms",
+          "id": "7fddcfa4ccda0f1b644d2240b69cd261",
+          "passes": 280,
+          "fails": 0
+        }
+      ]
+  },
+  "options": {
+    "summaryTimeUnit": "",
+    "noColor": false,
+    "summaryTrendStats": [
+      "avg",
+      "min",
+      "med",
+      "max",
+      "p(90)",
+      "p(95)"
+    ]
+  }
+}
