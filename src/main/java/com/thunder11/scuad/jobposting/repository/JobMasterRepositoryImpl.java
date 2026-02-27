@@ -14,7 +14,6 @@ import org.springframework.util.StringUtils;
 
 import lombok.RequiredArgsConstructor;
 
-import com.querydsl.core.Tuple;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.CaseBuilder;
@@ -24,6 +23,7 @@ import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.type.JobStatus;
 import com.thunder11.scuad.jobposting.dto.request.JobPostingSearchCondition;
+import com.thunder11.scuad.common.util.CursorTokenUtil;
 
 @RequiredArgsConstructor
 public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
@@ -31,14 +31,14 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
     private final JPAQueryFactory queryFactory;
 
     @Override
-    public List<JobMaster> searchJobPostings(JobPostingSearchCondition condition) {
+    public List<JobMaster> searchJobPostings(JobPostingSearchCondition condition, CursorTokenUtil.CursorData cursorData) {
 
         List<Long> ids = queryFactory
                 .select(jobMaster.id)
                 .from(jobMaster)
                 .join(jobMaster.company, company)
                 .where(
-                        cursorCondition(condition.getCursor(), condition.getSort()),
+                        cursorCondition(cursorData, condition.getSort()),
                         eqStatus(condition.getStatus()),
                         containsKeyword(condition.getKeyword()))
                 .orderBy(getOrderSpecifier(condition.getSort()))
@@ -95,24 +95,16 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
                 .otherwise(2);
     }
 
-    private BooleanExpression cursorCondition(Long cursorId, String sort) {
-        if (cursorId == null)
+    private BooleanExpression cursorCondition(CursorTokenUtil.CursorData cursorData, String sort) {
+        if (cursorData == null)
             return null;
 
+        Long cursorId = cursorData.cursorId;
+        LocalDate cursorEndDate = cursorData.cursorEndDate;
+        JobStatus cursorStatus = cursorData.cursorStatus;
+
         if ("DEADLINE_ASC".equalsIgnoreCase(sort)) {
-            Tuple cursorData = queryFactory
-                    .select(jobMaster.endDate, jobMaster.status)
-                    .from(jobMaster)
-                    .where(jobMaster.id.eq(cursorId))
-                    .fetchOne();
-
-            if (cursorData == null)
-                return null;
-
-            LocalDate cursorEndDate = cursorData.get(jobMaster.endDate);
-            JobStatus cursorStatus = cursorData.get(jobMaster.status);
             Integer cursorRank = (cursorStatus == JobStatus.OPEN) ? 1 : 2;
-
             NumberExpression<Integer> statusRank = getStatusRank();
 
             return statusRank.gt(cursorRank)
@@ -121,6 +113,6 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
                             .and(jobMaster.id.lt(cursorId)));
         }
 
-        return jobMaster.id.lt(cursorId);
+        return jobMaster.id.lt(cursorData.cursorId);
     }
 }
