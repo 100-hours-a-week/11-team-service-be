@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 public class JobPostingSearchCondition {
 
-    private Long cursor;
+    private String cursor;
     private Integer size = 20;
     private String keyword;
     private String status;
