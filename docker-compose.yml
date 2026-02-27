@@ -5,6 +5,10 @@ services:
     ports:
       - "8080:8080"
       - "9101:9101"
+
+    env_file:
+      - .env
+
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       JAVA_OPTS: ${JAVA_OPTS:-}
@@ -12,7 +16,7 @@ services:
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9101/actuator/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 12
