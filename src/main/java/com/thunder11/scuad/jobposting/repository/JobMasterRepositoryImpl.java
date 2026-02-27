@@ -2,6 +2,8 @@ package com.thunder11.scuad.jobposting.repository;
 
 import static com.thunder11.scuad.jobposting.domain.QCompany.company;
 import static com.thunder11.scuad.jobposting.domain.QJobMaster.jobMaster;
+import static com.thunder11.scuad.jobposting.domain.QJobMasterSkill.jobMasterSkill;
+import static com.thunder11.scuad.jobposting.domain.QSkill.skill;
 
 import java.time.LocalDate;
 import java.util.Collections;
@@ -52,6 +54,8 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
         List<JobMaster> results = queryFactory
                 .selectFrom(jobMaster)
                 .join(jobMaster.company, company).fetchJoin()
+                .leftJoin(jobMaster.jobMasterSkills, jobMasterSkill).fetchJoin()
+                .leftJoin(jobMasterSkill.skill, skill).fetchJoin()
                 .where(jobMaster.id.in(ids))
                 .fetch();
 
