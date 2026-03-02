@@ -117,7 +117,7 @@ jobs:
               \"export SPRING_PROFILES_ACTIVE='${SPRING_PROFILE}'\",
               \"export COMPOSE_S3_URI='${COMPOSE_S3_URI}'\",
               \"export ENV_PARAM_NAME='${ENV_PARAM_NAME}'\",
-              \"bash -lc ${ESCAPED_SCRIPT}\"
+              \"bash -lc \"${ESCAPED_SCRIPT}\" \"
             ]" \
             --query 'Command.CommandId' \
             --output text)
