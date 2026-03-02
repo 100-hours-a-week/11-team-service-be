@@ -117,7 +117,7 @@ jobs:
               \"export SPRING_PROFILES_ACTIVE='${SPRING_PROFILE}'\",
               \"export COMPOSE_S3_URI='${COMPOSE_S3_URI}'\",
               \"export ENV_PARAM_NAME='${ENV_PARAM_NAME}'\",
-              \"bash -lc \"${ESCAPED_SCRIPT}\" \"
+              \"bash -lc \\\"${ESCAPED_SCRIPT}\\\" \"
             ]" \
             --query 'Command.CommandId' \
             --output text)
@@ -139,29 +139,31 @@ jobs:
 
       - name: Health check with SSM
         id: health_check
+        shell: bash
         env:
           ENV_TAG_VALUE: ${{ steps.meta.outputs.environment_tag_value }}
         run: |
           set -euo pipefail
 
-          # send-command to run health check script on target instances
-          CMD_ID=$(aws ssm send-command \
-            --targets "Key=tag:Environment,Values=${ENV_TAG_VALUE}" "Key=tag:Tier,Values=app" "Key=tag:Role,Values=spring" \
-            --document-name "AWS-RunShellScript" \
-            --comment "backend health check" \
-            --parameters commands="$(cat <<'SSM'
+          HEALTH_SCRIPT=$(cat <<'SSM'
           set -euo pipefail
 
           cd /home/ubuntu/backend
 
           echo "Waiting for backend to become healthy..."
           for i in $(seq 1 60); do
-            # compose defines healthcheck, so Docker will expose it.
-            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' backend 2>/dev/null || echo "missing")
+          
+            # Container name may differ; find container ID by name filter.
+            CID=$(docker ps --filter "name=backend" -q | head -n 1 || true)
 
-            if [[ "$HEALTH" == "healthy" ]]; then
-              echo "Container health: healthy"
-              exit 0
+            if [[ -n "$CID" ]]; then
+              HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$CID" 2>/dev/null || echo "missing")
+              if [[ "$HEALTH" == "healthy" ]]; then
+                echo "Container health: healthy"
+                exit 0
+              fi
+            else
+              HEALTH="missing"
             fi
 
             # Fallback HTTP check (covers case when healthcheck isn't defined)
@@ -176,28 +178,45 @@ jobs:
 
           echo "Health check failed. Dumping logs..." >&2
           docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" || true
-          docker logs --tail 300 backend || true
+
+          CID=$(docker ps --filter "name=backend" -q | head -n 1 || true)
+          if [[ -n "$CID" ]]; then
+            docker logs --tail 300 "$CID" || true
+          else
+            echo "backend container not found" >&2
+          fi
+
           exit 1
           SSM
-          )" \
+          )
+
+          # JSON-escape (keeps newlines/quotes safe for SSM 전달)
+          ESCAPED_HEALTH_SCRIPT=$(python3 -c 'import json,sys; s=sys.stdin.read(); print(json.dumps(s)[1:-1])' <<< "$HEALTH_SCRIPT")
+
+          CMD_ID=$(aws ssm send-command \
+            --targets "Key=tag:Environment,Values=${ENV_TAG_VALUE}" "Key=tag:Tier,Values=app" "Key=tag:Role,Values=spring" \
+            --document-name "AWS-RunShellScript" \
+            --comment "backend health check" \
+            --parameters commands="[
+              \"bash -lc \\\"${ESCAPED_HEALTH_SCRIPT}\\\"\"
+            ]" \
             --query 'Command.CommandId' \
             --output text)
 
           echo "SSM CommandId: $CMD_ID"
 
-          # With --targets (fan-out), check results per instance.
+          # Fan-out 완료 대기
           for _ in $(seq 1 120); do
             INVOCATIONS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details \
               --query 'CommandInvocations[].{InstanceId:InstanceId,Status:Status}' --output json)
             DONE=$(echo "$INVOCATIONS" | python3 -c 'import json,sys; inv=json.load(sys.stdin); print(bool(inv) and all(x.get("Status") in ("Success","Failed","Cancelled","TimedOut") for x in inv))')
-            if [[ "$DONE" == "True" ]]; then
-              break
-            fi
+            [[ "$DONE" == "True" ]] && break
             sleep 5
           done
 
           echo "$INVOCATIONS"
 
+          # 인스턴스별 stdout/stderr 출력
           echo "$INVOCATIONS" | python3 -c 'import json,sys; inv=json.load(sys.stdin); print("\n".join(x["InstanceId"] for x in inv))' | while read -r IID; do
             echo "--- Output for $IID ---"
             aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$IID" \
@@ -205,6 +224,7 @@ jobs:
               --output json || true
           done
 
+          # 실패가 하나라도 있으면 step 실패
           FAIL_COUNT=$(echo "$INVOCATIONS" | python3 -c 'import json,sys; inv=json.load(sys.stdin); bad=[x for x in inv if x.get("Status") != "Success"]; print(len(bad))')
           if [[ "$FAIL_COUNT" != "0" ]]; then
             echo "One or more instances failed the health check step." >&2
