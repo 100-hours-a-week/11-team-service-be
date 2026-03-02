@@ -34,7 +34,7 @@ jobs:
       - name: Getting deploy target & image tag 
         id: meta
         run: |
-          if [[ ${{ env.TARGET_BRANCH}} == "main" ]]; then
+          if [[ "${{ env.TARGET_BRANCH}}" == "main" ]]; then
             PROFILE="prod"
             ENV_TAG_VALUE="prod"
             COMPOSE_S3_URI="${{ secrets.PROD_COMPOSE_S3_URI }}"
