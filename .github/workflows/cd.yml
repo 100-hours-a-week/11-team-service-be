@@ -73,20 +73,27 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Get AWS account ID for ECR registry URL
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           ECR_REGISTRY="$ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
           SCRIPT=$(cat <<'SSM'
           set -euo pipefail
-          
+
           mkdir -p /home/ubuntu/backend
           cd /home/ubuntu/backend
+
+          # Download docker-compose.yml from S3
           aws s3 cp "$COMPOSE_S3_URI" ./docker-compose.yml --region "$AWS_REGION"
+          
+          # Get environment variables from SSM Parameter Store and save to .env
           aws ssm get-parameter --name "$ENV_PARAM_NAME" --with-decryption --query "Parameter.Value" --output text --region "$AWS_REGION" > ./.env
           chmod 600 ./.env || true
 
+          # Login to ECR
           aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
+          # Pull new images and deploy with docker compose
           docker compose --env-file ./.env -f ./docker-compose.yml pull
           docker compose --env-file ./.env -f ./docker-compose.yml up -d --remove-orphans
 
@@ -94,8 +101,10 @@ jobs:
           SSM
           )
 
+          # Escape the script for safe passing to SSM (handles newlines, quotes, etc.)
           ESCAPED_SCRIPT=$(python3 -c 'import json,sys; s=sys.stdin.read(); print(json.dumps(s)[1:-1])' <<< "$SCRIPT")
 
+          # Send the command to instances with the specified tags
           CMD_ID=$(aws ssm send-command \
             --targets "Key=tag:Environment,Values=${ENV_TAG_VALUE}" "Key=tag:Tier,Values=app" "Key=tag:Role,Values=spring" \
             --document-name "AWS-RunShellScript" \
@@ -135,6 +144,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          # send-command to run health check script on target instances
           CMD_ID=$(aws ssm send-command \
             --targets "Key=tag:Environment,Values=${ENV_TAG_VALUE}" "Key=tag:Tier,Values=app" "Key=tag:Role,Values=spring" \
             --document-name "AWS-RunShellScript" \
@@ -155,7 +165,7 @@ jobs:
             fi
 
             # Fallback HTTP check (covers case when healthcheck isn't defined)
-            if wget -qO- http://localhost:8080/actuator/health >/dev/null 2>&1; then
+            if wget -qO- http://localhost:9101/actuator/health >/dev/null 2>&1; then
               echo "HTTP health: OK"
               exit 0
             fi
