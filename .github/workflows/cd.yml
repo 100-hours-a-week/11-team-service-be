@@ -62,8 +62,8 @@ jobs:
           echo "env_param_name=$ENV_PARAM_NAME" >> $GITHUB_OUTPUT
           echo "image_tag=${{ env.TARGET_BRANCH}}-latest" >> $GITHUB_OUTPUT
 
-
       - name: Deploy with SSM
+        shell: bash
         env:
           ENV_TAG_VALUE: ${{ steps.meta.outputs.environment_tag_value }}
           SPRING_PROFILE: ${{ steps.meta.outputs.profile }}
@@ -76,32 +76,13 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           ECR_REGISTRY="$ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-          CMD_ID=$(aws ssm send-command \
-            --targets "Key=tag:Environment,Values=${ENV_TAG_VALUE}" "Key=tag:Tier,Values=app" "Key=tag:Role,Values=spring" \
-            --document-name "AWS-RunShellScript" \
-            --comment "backend deploy via docker compose (compose from S3, .env from SSM Parameter Store)" \
-            --parameters commands="$(cat <<SSM
+          SCRIPT=$(cat <<'SSM'
           set -euo pipefail
-
-          export AWS_REGION='${AWS_REGION}'
-          export ECR_REGISTRY='${ECR_REGISTRY}'
-          export BACKEND_REPO='${ECR_REPOSITORY}'
-          export BACKEND_TAG='${IMAGE_TAG}'
-          export SPRING_PROFILES_ACTIVE='${SPRING_PROFILE}'
-
-          export COMPOSE_S3_URI='${COMPOSE_S3_URI}'
-          export ENV_PARAM_NAME='${ENV_PARAM_NAME}'
-
+          
           mkdir -p /home/ubuntu/backend
-          cd /home/ubuntu/backend 
-
-          # 1) docker-compose.yml from S3
+          cd /home/ubuntu/backend
           aws s3 cp "$COMPOSE_S3_URI" ./docker-compose.yml --region "$AWS_REGION"
-
-          # 2) .env from Parameter Store (SecureString supported)
-          aws ssm get-parameter \
-            --name "$ENV_PARAM_NAME" --with-decryption \
-            --query "Parameter.Value" --output text --region "$AWS_REGION" > ./.env
+          aws ssm get-parameter --name "$ENV_PARAM_NAME" --with-decryption --query "Parameter.Value" --output text --region "$AWS_REGION" > ./.env
           chmod 600 ./.env || true
 
           aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
@@ -111,7 +92,24 @@ jobs:
 
           docker ps --filter "name=backend" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
           SSM
-          )" \
+          )
+
+          ESCAPED_SCRIPT=$(python3 -c 'import json,sys; s=sys.stdin.read(); print(json.dumps(s)[1:-1])' <<< "$SCRIPT")
+
+          CMD_ID=$(aws ssm send-command \
+            --targets "Key=tag:Environment,Values=${ENV_TAG_VALUE}" "Key=tag:Tier,Values=app" "Key=tag:Role,Values=spring" \
+            --document-name "AWS-RunShellScript" \
+            --comment "backend deploy via docker compose" \
+            --parameters commands="[
+              \"export AWS_REGION='${AWS_REGION}'\",
+              \"export ECR_REGISTRY='${ECR_REGISTRY}'\",
+              \"export BACKEND_REPO='${ECR_REPOSITORY}'\",
+              \"export BACKEND_TAG='${IMAGE_TAG}'\",
+              \"export SPRING_PROFILES_ACTIVE='${SPRING_PROFILE}'\",
+              \"export COMPOSE_S3_URI='${COMPOSE_S3_URI}'\",
+              \"export ENV_PARAM_NAME='${ENV_PARAM_NAME}'\",
+              \"bash -lc ${ESCAPED_SCRIPT}\"
+            ]" \
             --query 'Command.CommandId' \
             --output text)
 
@@ -122,26 +120,13 @@ jobs:
             INVOCATIONS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details \
               --query 'CommandInvocations[].{InstanceId:InstanceId,Status:Status}' --output json)
             DONE=$(echo "$INVOCATIONS" | python3 -c 'import json,sys; inv=json.load(sys.stdin); print(bool(inv) and all(x.get("Status") in ("Success","Failed","Cancelled","TimedOut") for x in inv))')
-            if [[ "$DONE" == "True" ]]; then
-              break
-            fi
+            [[ "$DONE" == "True" ]] && break
             sleep 5
           done
 
           echo "$INVOCATIONS"
-
-          echo "$INVOCATIONS" | python3 -c 'import json,sys; inv=json.load(sys.stdin); print("\n".join(x["InstanceId"] for x in inv))' | while read -r IID; do
-            echo "--- Output for $IID ---"
-            aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$IID" \
-              --query '{Status:Status, StandardOutput:StandardOutputContent, StandardError:StandardErrorContent}' \
-              --output json || true
-          done
-
-          FAIL_COUNT=$(echo "$INVOCATIONS" | python3 -c 'import json,sys; inv=json.load(sys.stdin); bad=[x for x in inv if x.get("Status") != "Success"]; print(len(bad))')
-          if [[ "$FAIL_COUNT" != "0" ]]; then
-            echo "One or more instances failed the deploy step." >&2
-            exit 1
-          fi
+          FAIL_COUNT=$(echo "$INVOCATIONS" | python3 -c 'import json,sys; inv=json.load(sys.stdin); print(len([x for x in inv if x.get("Status")!="Success"]))')
+          [[ "$FAIL_COUNT" == "0" ]] || { echo "One or more instances failed deploy."; exit 1; }
 
       - name: Health check with SSM
         id: health_check
@@ -235,4 +220,3 @@ jobs:
       - name: Fail workflow if health check failed
         if: steps.health_check.outcome == 'failure'
         run: exit 1
-
