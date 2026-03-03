@@ -77,8 +77,8 @@ jobs:
           ECR_REGISTRY="$ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com"
           export ECR_REGISTRY
 
-          # JSON array로 안전하게 만들기 (따옴표 지옥 방지)
-          COMMANDS_JSON=$(python3 - <<'PY'
+          PARAM_FILE=$(mktemp)
+          python3 - <<'PY' > "$PARAM_FILE"
           import json, os
           cmds = [
             "set -euxo pipefail",
@@ -97,17 +97,19 @@ jobs:
             'aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"',
             'docker compose -f ./docker-compose.yml --env-file ./.env pull',
             'docker compose -f ./docker-compose.yml --env-file ./.env up -d --remove-orphans',
-            'docker ps --filter "name=backend" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"',
+            'docker ps --filter "name=backend" --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}"',
           ]
-          print(json.dumps(cmds))
+          print(json.dumps({"commands": cmds}))
           PY
-          )
+
+          echo "SSM parameters file:"
+          cat "$PARAM_FILE"
 
           CMD_ID=$(aws ssm send-command \
             --targets "Key=tag:Environment,Values=${ENV_TAG_VALUE}" "Key=tag:Tier,Values=app" "Key=tag:Role,Values=spring" \
             --document-name "AWS-RunShellScript" \
             --comment "backend deploy via docker compose" \
-            --parameters commands="$COMMANDS_JSON" \
+            --parameters "file://$PARAM_FILE" \
             --query 'Command.CommandId' \
             --output text)
 
@@ -180,11 +182,27 @@ jobs:
 
           B64=$(printf '%s' "$HEALTH_SCRIPT" | base64 -w0)
 
+          HC_PARAM_FILE=$(mktemp)
+          python3 - <<'PY' > "$HC_PARAM_FILE"
+          import json, os
+          b64 = os.environ["B64"]
+          cmds = [
+            "set -euxo pipefail",
+            f'printf %s "{b64}" | base64 -d > /tmp/health.sh',
+            "chmod +x /tmp/health.sh",
+            "/tmp/health.sh",
+          ]
+          print(json.dumps({"commands": cmds}))
+          PY
+
+          echo "SSM health parameters file:"
+          cat "$HC_PARAM_FILE"
+
           CMD_ID=$(aws ssm send-command \
             --targets "Key=tag:Environment,Values=${ENV_TAG_VALUE}" "Key=tag:Tier,Values=app" "Key=tag:Role,Values=spring" \
             --document-name "AWS-RunShellScript" \
             --comment "backend health check" \
-            --parameters "commands=bash -lc 'printf %s \"${B64}\" | base64 -d > /tmp/health.sh && chmod +x /tmp/health.sh && /tmp/health.sh'" \
+            --parameters "file://$HC_PARAM_FILE" \
             --query 'Command.CommandId' \
             --output text)
 
