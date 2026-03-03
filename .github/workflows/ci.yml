@@ -214,8 +214,8 @@ jobs:
         id: tags 
         run: |
           SHA_SHORT="${GITHUB_SHA::7}"
-          echo "tag_sha=release-${SHA_SHORT}" >> $GITHUB_OUTPUT
-          echo "tag_latest=release-latest" >> $GITHUB_OUTPUT
+          echo "tag_sha=staging-${SHA_SHORT}" >> $GITHUB_OUTPUT
+          echo "tag_latest=staging-latest" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
