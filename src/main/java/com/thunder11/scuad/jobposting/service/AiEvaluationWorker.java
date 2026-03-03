@@ -190,7 +190,7 @@ public class AiEvaluationWorker {
             log.error("통합 평가(파싱) 실패", e);
             failJob(evalJob, e.getMessage());
             failJob(resumeJob, "선행 파싱 완료 전 실패로 인한 이력서 분석 연쇄 중단");
-            portJobOpt.ifPresent(job -> failJob(job, "선행 파싱 완료 전 살패로 인한 포트폴리오 분석 연쇄 중단"));
+            portJobOpt.ifPresent(job -> failJob(job, "선행 파싱 완료 전 실패로 인한 포트폴리오 분석 연쇄 중단"));
 
             return;
         }
