@@ -145,17 +145,16 @@ jobs:
           set -eux
 
           HEALTH_SCRIPT=$(cat <<'SSM'
+          #!/usr/bin/env bash
           set -eux
 
           cd /home/ubuntu/backend
 
           echo "Waiting for backend to become healthy..."
           for i in $(seq 1 60); do
-
-            # Container name may differ; find container ID by name filter.
             CID=$(docker ps --filter "name=backend" -q | head -n 1 || true)
 
-            if [[ -n "$CID" ]]; then
+            if [[ -n "${CID:-}" ]]; then
               HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$CID" 2>/dev/null || echo "missing")
               if [[ "$HEALTH" == "healthy" ]]; then
                 echo "Container health: healthy"
@@ -179,7 +178,7 @@ jobs:
           docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" || true
 
           CID=$(docker ps --filter "name=backend" -q | head -n 1 || true)
-          if [[ -n "$CID" ]]; then
+          if [[ -n "${CID:-}" ]]; then
             docker logs --tail 300 "$CID" || true
           else
             echo "backend container not found" >&2
@@ -199,8 +198,9 @@ jobs:
           cmds = [
             "set -eux",
             f'printf %s "{b64}" | base64 -d > /tmp/health.sh',
-            "chmod +x /tmp/health.sh",
-            "/tmp/health.sh",
+            "chmod 700 /tmp/health.sh",
+            # ✅ bash로 강제 실행 (sh에서 [[ ]] 터지는 문제 제거)
+            "bash /tmp/health.sh",
           ]
           print(json.dumps({"commands": cmds}))
           PY
@@ -232,8 +232,10 @@ jobs:
           # 인스턴스별 stdout/stderr 출력
           echo "$INVOCATIONS" | python3 -c 'import json,sys; inv=json.load(sys.stdin); print("\n".join(x["InstanceId"] for x in inv))' | while read -r IID; do
             echo "--- Output for $IID ---"
+            
+            # ✅ Failed인데 stdout/stderr 비는 케이스에서 StatusDetails/ResponseCode가 단서가 됨
             aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$IID" \
-              --query '{Status:Status, StandardOutput:StandardOutputContent, StandardError:StandardErrorContent}' \
+              --query '{Status:Status,StatusDetails:StatusDetails,ResponseCode:ResponseCode,StandardOutput:StandardOutputContent,StandardError:StandardErrorContent}' \
               --output json || true
           done
 
