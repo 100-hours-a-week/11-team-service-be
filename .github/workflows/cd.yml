@@ -73,58 +73,46 @@ jobs:
         run: |
           set -euxo pipefail
 
-          # Get AWS account ID for ECR registry URL
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           ECR_REGISTRY="$ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          export ECR_REGISTRY
 
-          SCRIPT=$(cat <<'SSM'
-          set -euxo pipefail
-
-          mkdir -p /home/ubuntu/backend
-          cd /home/ubuntu/backend
-
-          # Download docker-compose.yml from S3
-          aws s3 cp "$COMPOSE_S3_URI" ./docker-compose.yml --region "$AWS_REGION"
-          
-          # Get environment variables from SSM Parameter Store and save to .env
-          aws ssm get-parameter --name "$ENV_PARAM_NAME" --with-decryption --query "Parameter.Value" --output text --region "$AWS_REGION" > ./.env
-          chmod 600 ./.env || true
-
-          # Login to ECR
-          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
-
-          # Pull new images and deploy with docker compose
-          docker compose --env-file ./.env -f ./docker-compose.yml pull
-          docker compose --env-file ./.env -f ./docker-compose.yml up -d --remove-orphans
-
-          docker ps --filter "name=backend" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
-          SSM
+          # JSON array로 안전하게 만들기 (따옴표 지옥 방지)
+          COMMANDS_JSON=$(python3 - <<'PY'
+          import json, os
+          cmds = [
+            "set -euxo pipefail",
+            f"export AWS_REGION={os.environ['AWS_REGION']}",
+            f"export ECR_REGISTRY={os.environ['ECR_REGISTRY']}",
+            f"export BACKEND_REPO={os.environ['ECR_REPOSITORY']}",
+            f"export BACKEND_TAG={os.environ['IMAGE_TAG']}",
+            f"export SPRING_PROFILES_ACTIVE={os.environ['SPRING_PROFILE']}",
+            f"export COMPOSE_S3_URI={os.environ['COMPOSE_S3_URI']}",
+            f"export ENV_PARAM_NAME={os.environ['ENV_PARAM_NAME']}",
+            "mkdir -p /home/ubuntu/backend",
+            "cd /home/ubuntu/backend",
+            'aws s3 cp "$COMPOSE_S3_URI" ./docker-compose.yml --region "$AWS_REGION"',
+            'aws ssm get-parameter --name "$ENV_PARAM_NAME" --with-decryption --query "Parameter.Value" --output text --region "$AWS_REGION" > ./.env',
+            "chmod 600 ./.env || true",
+            'aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"',
+            'docker compose -f ./docker-compose.yml --env-file ./.env pull',
+            'docker compose -f ./docker-compose.yml --env-file ./.env up -d --remove-orphans',
+            'docker ps --filter "name=backend" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"',
+          ]
+          print(json.dumps(cmds))
+          PY
           )
 
-          # Escape the script for safe passing to SSM (handles newlines, quotes, etc.)
-          ESCAPED_SCRIPT=$(python3 -c 'import json,sys; s=sys.stdin.read(); print(json.dumps(s)[1:-1])' <<< "$SCRIPT")
-
-          # Send the command to instances with the specified tags
           CMD_ID=$(aws ssm send-command \
             --targets "Key=tag:Environment,Values=${ENV_TAG_VALUE}" "Key=tag:Tier,Values=app" "Key=tag:Role,Values=spring" \
             --document-name "AWS-RunShellScript" \
             --comment "backend deploy via docker compose" \
-            --parameters commands="[
-              \"export AWS_REGION='${AWS_REGION}'\",
-              \"export ECR_REGISTRY='${ECR_REGISTRY}'\",
-              \"export BACKEND_REPO='${ECR_REPOSITORY}'\",
-              \"export BACKEND_TAG='${IMAGE_TAG}'\",
-              \"export SPRING_PROFILES_ACTIVE='${SPRING_PROFILE}'\",
-              \"export COMPOSE_S3_URI='${COMPOSE_S3_URI}'\",
-              \"export ENV_PARAM_NAME='${ENV_PARAM_NAME}'\",
-              \"bash -lc \\\"${ESCAPED_SCRIPT}\\\" \"
-            ]" \
+            --parameters commands="$COMMANDS_JSON" \
             --query 'Command.CommandId' \
             --output text)
 
           echo "SSM CommandId: $CMD_ID"
 
-          # With --targets (fan-out), check results per instance.
           for _ in $(seq 1 120); do
             INVOCATIONS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details \
               --query 'CommandInvocations[].{InstanceId:InstanceId,Status:Status}' --output json)
@@ -196,7 +184,7 @@ jobs:
             --targets "Key=tag:Environment,Values=${ENV_TAG_VALUE}" "Key=tag:Tier,Values=app" "Key=tag:Role,Values=spring" \
             --document-name "AWS-RunShellScript" \
             --comment "backend health check" \
-            --parameters "commands=bash -lc 'printf %s ${B64} | base64 -d > /tmp/health.sh && chmod +x /tmp/health.sh && /tmp/health.sh'" \
+            --parameters "commands=bash -lc 'printf %s \"${B64}\" | base64 -d > /tmp/health.sh && chmod +x /tmp/health.sh && /tmp/health.sh'" \
             --query 'Command.CommandId' \
             --output text)
 
