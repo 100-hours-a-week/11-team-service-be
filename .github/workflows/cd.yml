@@ -184,6 +184,7 @@ jobs:
           )
 
           B64=$(printf '%s' "$HEALTH_SCRIPT" | base64 -w0)
+          export B64
 
           HC_PARAM_FILE=$(mktemp)
           python3 - <<'PY' > "$HC_PARAM_FILE"
