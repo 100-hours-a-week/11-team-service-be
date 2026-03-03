@@ -96,6 +96,8 @@ jobs:
             "chmod 600 ./.env || true",
             'aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"',
             'docker compose -f ./docker-compose.yml --env-file ./.env pull',
+            'docker ps -a --filter "name=^/backend$" --format "{{.ID}} {{.Status}} {{.Image}}" || true',
+            'docker rm -f backend || true',
             'docker compose -f ./docker-compose.yml --env-file ./.env down --remove-orphans || true',
             'docker compose -f ./docker-compose.yml --env-file ./.env up -d --remove-orphans',
             'docker ps --filter "name=backend" --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}"',
