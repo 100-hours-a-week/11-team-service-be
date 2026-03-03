@@ -191,7 +191,7 @@ jobs:
           import json, os
           b64 = os.environ["B64"]
           cmds = [
-            "set -euxo pipefail",
+            "set -eux",
             f'printf %s "{b64}" | base64 -d > /tmp/health.sh',
             "chmod +x /tmp/health.sh",
             "/tmp/health.sh",
