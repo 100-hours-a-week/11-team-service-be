@@ -63,7 +63,8 @@ public class JobPostingManagementService {
         String nextCursorToken = "";
         if (!masters.isEmpty()) {
             JobMaster lastItem = masters.get(masters.size() - 1);
-            nextCursorToken = cursorTokenUtil.createToken(lastItem.getId(), lastItem.getEndDate(), lastItem.getStatus());
+            String token = cursorTokenUtil.createToken(lastItem.getId(), lastItem.getEndDate(), lastItem.getStatus());
+            nextCursorToken = (token != null) ? token : "";
         }
 
         boolean isLast = items.size() < condition.getSize();
