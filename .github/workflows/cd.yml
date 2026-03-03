@@ -71,7 +71,7 @@ jobs:
           COMPOSE_S3_URI: ${{ steps.meta.outputs.compose_s3_uri }}
           ENV_PARAM_NAME: ${{ steps.meta.outputs.env_param_name }}
         run: |
-          set -euxo pipefail
+          set -eux pipefail
 
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           ECR_REGISTRY="$ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com"
@@ -81,7 +81,7 @@ jobs:
           python3 - <<'PY' > "$PARAM_FILE"
           import json, os
           cmds = [
-            "set -euxo pipefail",
+            "set -eux pipefail",
             f"export AWS_REGION={os.environ['AWS_REGION']}",
             f"export ECR_REGISTRY={os.environ['ECR_REGISTRY']}",
             f"export BACKEND_REPO={os.environ['ECR_REPOSITORY']}",
@@ -133,10 +133,10 @@ jobs:
         env:
           ENV_TAG_VALUE: ${{ steps.meta.outputs.environment_tag_value }}
         run: |
-          set -euxo pipefail
+          set -eux pipefail
 
           HEALTH_SCRIPT=$(cat <<'SSM'
-          set -euxo pipefail
+          set -eux pipefail
 
           cd /home/ubuntu/backend
 
