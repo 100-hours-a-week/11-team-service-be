@@ -121,8 +121,8 @@ jobs:
   static_analysis:
     name: Static Analysis (Sonar Cloud)
     runs-on: ubuntu-latest
-    needs: test
-    if: github.base_ref == 'develop' || (github.event_name == 'workflow_dispatch' && github.ref_name == 'develop')
+    needs: test 
+    if: github.base_ref == 'develop' || (github.event_name == 'workflow_dispatch' && github.ref_name == 'develop') || github.base_ref == 'release' || (github.event_name == 'workflow_dispatch' && github.ref_name == 'release')
 
     steps:
       - uses: actions/checkout@v4
