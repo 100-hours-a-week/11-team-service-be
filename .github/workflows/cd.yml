@@ -3,7 +3,7 @@ name: Backend CD
 on:
   workflow_dispatch: # 수동 실행
   push:
-    branches: [develop, main]
+    branches: [develop, main, release]
     paths-ignore:
       - "**.md"
       - ".github/**"
@@ -31,36 +31,42 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Getting deploy target & image tag 
+      - name: Getting deploy target & image tag
         id: meta
+        shell: bash
         run: |
-          if [[ "${{ env.TARGET_BRANCH}}" == "main" ]]; then
+          set -euo pipefail
+
+          if [[ "${{ env.TARGET_BRANCH }}" == "main" ]]; then
             PROFILE="prod"
             ENV_TAG_VALUE="prod"
             COMPOSE_S3_URI="${{ secrets.PROD_COMPOSE_S3_URI }}"
             ENV_PARAM_NAME="${{ secrets.PROD_ENV_PARAM_NAME }}"
+            IMAGE_TAG="main-latest"
+          elif [[ "${{ env.TARGET_BRANCH }}" == "release" ]]; then
+            PROFILE="staging"
+            ENV_TAG_VALUE="staging"
+            COMPOSE_S3_URI="${{ secrets.STAGING_COMPOSE_S3_URI }}"
+            ENV_PARAM_NAME="${{ secrets.STAGING_ENV_PARAM_NAME }}"
+            IMAGE_TAG="staging-latest"
           else
             PROFILE="dev"
             ENV_TAG_VALUE="dev"
             COMPOSE_S3_URI="${{ secrets.DEV_COMPOSE_S3_URI }}"
             ENV_PARAM_NAME="${{ secrets.DEV_ENV_PARAM_NAME }}"
+            IMAGE_TAG="develop-latest"
           fi
 
-          if [[ -z "$COMPOSE_S3_URI" ]]; then
-            echo "::error::COMPOSE_S3_URI is empty. Set DEV_COMPOSE_S3_URI / PROD_COMPOSE_S3_URI secrets. (example: s3://bucket/be/docker-compose.yml)"
-            exit 1
-          fi
+          [[ -n "$COMPOSE_S3_URI" ]] || { echo "::error::COMPOSE_S3_URI is empty"; exit 1; }
+          [[ -n "$ENV_PARAM_NAME" ]] || { echo "::error::ENV_PARAM_NAME is empty"; exit 1; }
 
-          if [[ -z "$ENV_PARAM_NAME" ]]; then
-            echo "::error::ENV_PARAM_NAME is empty. Set DEV_ENV_PARAM_NAME / PROD_ENV_PARAM_NAME secrets. (example: /staging/be/DOT_ENV)"
-            exit 1
-          fi
-
-          echo "profile=$PROFILE" >> $GITHUB_OUTPUT
-          echo "environment_tag_value=$ENV_TAG_VALUE" >> $GITHUB_OUTPUT
-          echo "compose_s3_uri=$COMPOSE_S3_URI" >> $GITHUB_OUTPUT
-          echo "env_param_name=$ENV_PARAM_NAME" >> $GITHUB_OUTPUT
-          echo "image_tag=${{ env.TARGET_BRANCH }}-latest" >> $GITHUB_OUTPUT
+          {
+            echo "profile=$PROFILE"
+            echo "environment_tag_value=$ENV_TAG_VALUE"
+            echo "compose_s3_uri=$COMPOSE_S3_URI"
+            echo "env_param_name=$ENV_PARAM_NAME"
+            echo "image_tag=$IMAGE_TAG"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Deploy with SSM
         shell: bash
