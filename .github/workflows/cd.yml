@@ -71,14 +71,14 @@ jobs:
           COMPOSE_S3_URI: ${{ steps.meta.outputs.compose_s3_uri }}
           ENV_PARAM_NAME: ${{ steps.meta.outputs.env_param_name }}
         run: |
-          set -euo pipefail
+          set -eux pipefail
 
           # Get AWS account ID for ECR registry URL
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           ECR_REGISTRY="$ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
           SCRIPT=$(cat <<'SSM'
-          set -euo pipefail
+          set -eux pipefail
 
           mkdir -p /home/ubuntu/backend
           cd /home/ubuntu/backend
@@ -152,7 +152,7 @@ jobs:
 
           echo "Waiting for backend to become healthy..."
           for i in $(seq 1 60); do
-          
+
             # Container name may differ; find container ID by name filter.
             CID=$(docker ps --filter "name=backend" -q | head -n 1 || true)
 
