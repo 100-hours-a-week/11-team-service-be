@@ -60,7 +60,10 @@ jobs:
           echo "environment_tag_value=$ENV_TAG_VALUE" >> $GITHUB_OUTPUT
           echo "compose_s3_uri=$COMPOSE_S3_URI" >> $GITHUB_OUTPUT
           echo "env_param_name=$ENV_PARAM_NAME" >> $GITHUB_OUTPUT
-          echo "image_tag=${{ env.TARGET_BRANCH}}-latest" >> $GITHUB_OUTPUT
+
+          RAW_TAG="${{ env.TARGET_BRANCH }}-latest"
+          SAFE_TAG="$(echo "$RAW_TAG" | tr '/:@' '---')"   # / : @ 같은 위험문자 치환
+          echo "image_tag=${SAFE_TAG}" >> $GITHUB_OUTPUT
 
       - name: Deploy with SSM
         shell: bash
