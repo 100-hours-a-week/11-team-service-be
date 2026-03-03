@@ -20,6 +20,7 @@ import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.NumberExpression;
+import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import com.thunder11.scuad.jobposting.domain.JobMaster;
@@ -35,15 +36,17 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
     @Override
     public List<JobMaster> searchJobPostings(JobPostingSearchCondition condition, CursorTokenUtil.CursorData cursorData) {
 
-        List<Long> ids = queryFactory
+        JPAQuery<Long> query = queryFactory
                 .select(jobMaster.id)
                 .from(jobMaster)
-                .join(jobMaster.company, company)
-                .where(
-                        cursorCondition(cursorData, condition.getSort()),
-                        eqStatus(condition.getStatus()),
-                        containsKeyword(condition.getKeyword()))
-                .orderBy(getOrderSpecifier(condition.getSort()))
+                .where(cursorCondition(cursorData, condition.getSort()));
+
+        if (StringUtils.hasText(condition.getKeyword())) {
+            query.join(jobMaster.company, company)
+                    .where(containsKeyword(condition.getKeyword()));
+        }
+
+        List<Long> ids = query.orderBy(getOrderSpecifier(condition.getSort()))
                 .limit(condition.getSize())
                 .fetch();
 
@@ -84,13 +87,13 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
 
     private OrderSpecifier[] getOrderSpecifier(String sort) {
         if ("DEADLINE_ASC".equalsIgnoreCase(sort)) {
-            return new OrderSpecifier[] {
+            return new OrderSpecifier[]{
                     getStatusRank().asc(),
                     jobMaster.endDate.asc(),
                     jobMaster.id.desc()
             };
         }
-        return new OrderSpecifier[] { jobMaster.id.desc() };
+        return new OrderSpecifier[]{jobMaster.id.desc()};
     }
 
     private NumberExpression<Integer> getStatusRank() {
