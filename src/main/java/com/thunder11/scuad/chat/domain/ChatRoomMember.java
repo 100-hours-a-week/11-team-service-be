@@ -9,7 +9,15 @@ import com.thunder11.scuad.chat.domain.type.MemberRole;
 
 // 채팅방 멤버십 관리
 @Entity
-@Table(name = "chat_room_members")
+@Table(
+        name = "chat_room_members",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_chat_room_members_job_application_room",
+                        columnNames = {"job_application_id", "chat_room_id"}
+                )
+        }
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChatRoomMember {
@@ -27,8 +35,8 @@ public class ChatRoomMember {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    // 지원 근거 (job_applications) - UNIQUE 제약
-    @Column(name = "job_application_id", nullable = false, unique = true)
+    // 지원 근거 (job_applications)
+    @Column(name = "job_application_id", nullable = false)
     private Long jobApplicationId;
 
     // 멤버 역할

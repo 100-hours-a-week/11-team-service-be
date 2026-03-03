@@ -74,6 +74,10 @@ public class AiEvalJob {
         this.status = AiJobStatus.SUCCEEDED;
     }
 
+    public void startProcessing() {
+        this.status = AiJobStatus.PROCESSING;
+    }
+
     public void fail(String message) {
         this.status = AiJobStatus.FAILED;
         this.errorMessage = message;

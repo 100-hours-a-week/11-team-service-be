@@ -3,6 +3,7 @@ package com.thunder11.scuad.chat.service;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import com.thunder11.scuad.auth.repository.UserRepository;
@@ -186,8 +187,8 @@ public class ChatMessageService {
             List<Object[]> fileInfos = fileObjectRepository.findFileInfosByIds(fileIds);
             fileInfoMap = fileInfos.stream()
                     .collect(Collectors.toMap(
-                            arr -> (Long) arr[0],
-                            arr -> new FileInfo(
+                            (Object[] arr) -> (Long) arr[0],
+                            (Object[] arr) -> new FileInfo(
                                     (Long) arr[0],      // fileId
                                     (String) arr[1],    // fileName
                                     (String) arr[2],    // contentType
@@ -282,18 +283,25 @@ public class ChatMessageService {
         nicknameMap.put(userId, senderNickname);
 
         // 10. 파일 정보 조회
+        // findFileInfosByIds(List)를 재사용하여 ClassCastException 방지
+        // 이유: 단건 Optional<Object[]> 쿼리는 JPQL 다중 컬럼 반환 시 Object[][] 로 감싸져
+        //       arr[0]이 Long이 아닌 Object[]가 되어 ClassCastException 발생.
+        //       getMessages()에서 이미 검증된 List<Object[]> 방식으로 통일.
         Map<Long, FileInfo> fileInfoMap = new HashMap<>();
         if (savedMessage.getFileId() != null) {
-            fileObjectRepository.findFileInfoById(savedMessage.getFileId())
-                    .ifPresent(arr -> {
-                        FileInfo info = new FileInfo(
-                                (Long) arr[0],      // fileId
-                                (String) arr[1],    // fileName
-                                (String) arr[2],    // contentType
-                                (Long) arr[3]       // fileSize
-                        );
-                        fileInfoMap.put(info.fileId, info);
-                    });
+            List<Object[]> fileInfos = fileObjectRepository.findFileInfosByIds(
+                    java.util.List.of(savedMessage.getFileId())
+            );
+            if (!fileInfos.isEmpty()) {
+                Object[] arr = fileInfos.get(0);
+                FileInfo info = new FileInfo(
+                        (Long) arr[0],      // fileId
+                        (String) arr[1],    // fileName
+                        (String) arr[2],    // contentType
+                        (Long) arr[3]       // fileSize
+                );
+                fileInfoMap.put(info.fileId(), info);
+            }
         }
 
         return convertToResponse(savedMessage, nicknameMap, fileInfoMap);

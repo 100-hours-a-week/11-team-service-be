@@ -6,4 +6,6 @@ import com.thunder11.scuad.file.domain.FileObject;
 
 public interface FileStorageService {
     FileObject uploadFile(MultipartFile file, String directory);
+
+    void deleteFile(Long fileId);
 }

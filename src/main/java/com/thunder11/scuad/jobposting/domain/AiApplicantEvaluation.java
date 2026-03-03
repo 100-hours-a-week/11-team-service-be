@@ -10,16 +10,14 @@ import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.type.SqlTypes;
 
-import lombok.AccessLevel;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import com.thunder11.scuad.common.entity.BaseTimeEntity;
 
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Table(name = "ai_applicant_evaluation")
 @SQLDelete(sql = "UPDATE ai_applicant_evaluation SET deleted_at = NOW() WHERE evaluation_id = ?")
 @SQLRestriction("deleted_at IS NULL")
@@ -55,6 +53,13 @@ public class AiApplicantEvaluation extends BaseTimeEntity {
             String oneLineReview, String feedbackDetail,
             List<EvaluationScore> comparisonScores) {
         this.jobApplication = jobApplication;
+        this.overallScore = overallScore;
+        this.oneLineReview = oneLineReview;
+        this.feedbackDetail = feedbackDetail;
+        this.comparisonScores = comparisonScores;
+    }
+
+    public void updateEvaluation(Integer overallScore, String oneLineReview, String feedbackDetail, List<EvaluationScore> comparisonScores) {
         this.overallScore = overallScore;
         this.oneLineReview = oneLineReview;
         this.feedbackDetail = feedbackDetail;

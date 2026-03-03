@@ -2,6 +2,9 @@ package com.thunder11.scuad.jobposting.service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+
+import jakarta.persistence.EntityManager;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,7 +25,7 @@ import com.thunder11.scuad.jobposting.dto.request.JobPostingSearchCondition;
 import com.thunder11.scuad.jobposting.dto.response.JobPostingListResponse;
 import com.thunder11.scuad.jobposting.repository.JobMasterSkillRepository;
 import com.thunder11.scuad.chat.repository.ChatRoomRepository;
-import java.util.stream.Collectors;
+import com.thunder11.scuad.common.util.CursorTokenUtil;
 
 @Service
 @RequiredArgsConstructor
@@ -34,12 +37,18 @@ public class JobPostingManagementService {
     private final JobMasterRepository jobMasterRepository;
     private final JobMasterSkillRepository jobMasterSkillRepository;
     private final ChatRoomRepository chatRoomRepository;
+    private final EntityManager entityManager;
+    private final CursorTokenUtil cursorTokenUtil;
 
     @Transactional(readOnly = true)
     public Map<String, Object> getJobPostings(JobPostingSearchCondition condition) {
-        List<JobMaster> masters = jobMasterRepository.searchJobPostings(condition);
+        CursorTokenUtil.CursorData cursorData = null;
+        if (condition.getCursor() != null && !condition.getCursor().isBlank() && !"-1".equals(condition.getCursor())) {
+            cursorData = cursorTokenUtil.decodeToken(condition.getCursor());
+        }
 
-        // 채팅방 개수 일괄 조회
+        List<JobMaster> masters = jobMasterRepository.searchJobPostings(condition, cursorData);
+
         List<Long> masterIds = masters.stream().map(JobMaster::getId).toList();
         Map<Long, Long> chatCounts = chatRoomRepository.countActiveRoomsByJobMasterIds(masterIds)
                 .stream()
@@ -51,13 +60,18 @@ public class JobPostingManagementService {
                 .map(m -> JobPostingListResponse.of(m, chatCounts.getOrDefault(m.getId(), 0L).intValue()))
                 .toList();
 
-        Long nextCursor = items.isEmpty() ? null : items.get(items.size() - 1).getId();
+        String nextCursorToken = "";
+        if (!masters.isEmpty()) {
+            JobMaster lastItem = masters.get(masters.size() - 1);
+            String token = cursorTokenUtil.createToken(lastItem.getId(), lastItem.getEndDate(), lastItem.getStatus());
+            nextCursorToken = (token != null) ? token : "";
+        }
 
         boolean isLast = items.size() < condition.getSize();
 
         return Map.of(
                 "items", items,
-                "next_cursor", nextCursor != null ? nextCursor : -1L,
+                "next_cursor", nextCursorToken,
                 "last", isLast);
     }
 
@@ -109,11 +123,11 @@ public class JobPostingManagementService {
 
         aiServiceClient.deleteJobAnalysis(jobMaster.getJobPosts().get(0).getAiJobId());
 
+        entityManager.detach(jobMaster);
         jobMasterSkillRepository.deleteHardByJobMasterId(jobMasterId);
 
         jobMaster.getJobPosts().forEach(p -> jobPostRepository.deleteHardById(p.getId()));
 
-        // JobMaster 삭제
         jobMasterRepository.deleteHardById(jobMasterId);
     }
 }

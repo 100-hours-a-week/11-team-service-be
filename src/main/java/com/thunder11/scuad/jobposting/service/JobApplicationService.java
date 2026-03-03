@@ -1,13 +1,16 @@
 package com.thunder11.scuad.jobposting.service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import com.thunder11.scuad.auth.domain.User;
 import com.thunder11.scuad.auth.repository.UserRepository;
@@ -24,9 +27,11 @@ import com.thunder11.scuad.jobposting.dto.response.MyApplicationResponse;
 import com.thunder11.scuad.jobposting.repository.ApplicationDocumentRepository;
 import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
 import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
+import com.thunder11.scuad.jobposting.dto.response.JobApplicationDetailResponse;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class JobApplicationService {
 
     private final UserRepository userRepository;
@@ -64,7 +69,7 @@ public class JobApplicationService {
             saveDocument(application, "PORTFOLIO", portfolio);
         }
 
-        analysisService.createEvaluationJob(application.getId(), userId, "EVALUATION");
+        analysisService.createEvaluationJob(application.getId(), userId, "ALL");
 
         return application.getId();
     }
@@ -84,13 +89,15 @@ public class JobApplicationService {
         } else {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "문서 타입은 RESUME 또는 PORTFOLIO여야 합니다.");
         }
-
         ApplicationDocumentType type = ApplicationDocumentType.valueOf(docType.toUpperCase());
-        if (applicationDocumentRepository.existsByJobApplicationIdAndDocType(applicationId, type)) {
-            throw new ApiException(ErrorCode.CONFLICT, "이미 해당 타입의 문서가 등록되어있습니다.");
-        }
 
-        return saveDocument(jobApplication, docType, file);
+        Optional<ApplicationDocument> existingDoc = applicationDocumentRepository.findByJobApplication_IdAndDocType(applicationId, type);
+
+        if(existingDoc.isPresent()) {
+            return updateDocument(existingDoc.get(), file, docType);
+        } else {
+            return saveDocument(jobApplication, docType, file);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -108,6 +115,44 @@ public class JobApplicationService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public JobApplicationDetailResponse getJobApplicationDetail(Long userId, Long applicationId) {
+        JobApplication application = jobApplicationRepository.findByIdAndUserUserId(applicationId, userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "지원 내역을 찾을 수 없거나 접근 권한이 없습니다."));
+
+        List<ApplicationDocument> documents = applicationDocumentRepository
+                .findAllByJobApplication_Id(application.getId());
+
+        log.info("지원서 조회 - ID: {}, 찾은 서류 개수: {}", application.getId(), documents.size());
+        documents.forEach(doc -> log.info("  - 서류: ID={}, Type={}, DeletedAt={}", doc.getId(), doc.getDocType(),
+                doc.getDeletedAt()));
+
+        Map<ApplicationDocumentType, ApplicationDocument> docMap = documents.stream()
+                .collect(Collectors.toMap(ApplicationDocument::getDocType, doc -> doc));
+
+        List<JobApplicationDetailResponse.ApplicationDocumentResponse> documentResponses = List.of(
+                createDocumentResponse(docMap.get(ApplicationDocumentType.RESUME), "RESUME"),
+                createDocumentResponse(docMap.get(ApplicationDocumentType.PORTFOLIO), "PORTFOLIO"));
+
+        return JobApplicationDetailResponse.of(application, documentResponses);
+    }
+
+    private JobApplicationDetailResponse.ApplicationDocumentResponse createDocumentResponse(ApplicationDocument doc,
+            String typeStr) {
+        if (doc == null) {
+            return JobApplicationDetailResponse.ApplicationDocumentResponse.builder()
+                    .docType(typeStr)
+                    .isRegistered(false)
+                    .build();
+        }
+        return JobApplicationDetailResponse.ApplicationDocumentResponse.builder()
+                .docType(typeStr)
+                .isRegistered(true)
+                .originalFileName(doc.getFile().getOriginalName())
+                .fileUrl(String.valueOf(doc.getFile().getId()))
+                .build();
+    }
+
     private ApplicationDocument saveDocument(JobApplication application, String docType, MultipartFile file) {
 
         String uploadPath = "applications/" + application.getId() + "/" + docType.toLowerCase();
@@ -121,5 +166,17 @@ public class JobApplicationService {
 
         application.addApplicationDocument(document);
         return applicationDocumentRepository.save(document);
+    }
+
+    private ApplicationDocument updateDocument(ApplicationDocument existingDoc, MultipartFile file, String docType) {
+        FileObject oldFile = existingDoc.getFile();
+        fileStorageService.deleteFile(oldFile.getId());
+
+        String uploadPath = "applications/" + existingDoc.getId() + "/" + docType.toLowerCase();
+        FileObject newFile = fileStorageService.uploadFile(file, uploadPath);
+
+        existingDoc.updateFile(newFile);
+
+        return applicationDocumentRepository.save(existingDoc);
     }
 }

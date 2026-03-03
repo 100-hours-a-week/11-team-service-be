@@ -2,6 +2,8 @@ package com.thunder11.scuad.jobposting.repository;
 
 import static com.thunder11.scuad.jobposting.domain.QCompany.company;
 import static com.thunder11.scuad.jobposting.domain.QJobMaster.jobMaster;
+import static com.thunder11.scuad.jobposting.domain.QJobMasterSkill.jobMasterSkill;
+import static com.thunder11.scuad.jobposting.domain.QSkill.skill;
 
 import java.time.LocalDate;
 import java.util.Collections;
@@ -14,14 +16,17 @@ import org.springframework.util.StringUtils;
 
 import lombok.RequiredArgsConstructor;
 
-import com.querydsl.core.types.Order;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.CaseBuilder;
+import com.querydsl.core.types.dsl.NumberExpression;
+import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.type.JobStatus;
 import com.thunder11.scuad.jobposting.dto.request.JobPostingSearchCondition;
+import com.thunder11.scuad.common.util.CursorTokenUtil;
 
 @RequiredArgsConstructor
 public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
@@ -29,17 +34,19 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
     private final JPAQueryFactory queryFactory;
 
     @Override
-    public List<JobMaster> searchJobPostings(JobPostingSearchCondition condition) {
+    public List<JobMaster> searchJobPostings(JobPostingSearchCondition condition, CursorTokenUtil.CursorData cursorData) {
 
-        List<Long> ids = queryFactory
+        JPAQuery<Long> query = queryFactory
                 .select(jobMaster.id)
                 .from(jobMaster)
-                .join(jobMaster.company, company)
-                .where(
-                        cursorCondition(condition.getCursor(), condition.getSort()),
-                        eqStatus(condition.getStatus()),
-                        containsKeyword(condition.getKeyword()))
-                .orderBy(getOrderSpecifier(condition.getSort()))
+                .where(cursorCondition(cursorData, condition.getSort()));
+
+        if (StringUtils.hasText(condition.getKeyword())) {
+            query.join(jobMaster.company, company)
+                    .where(containsKeyword(condition.getKeyword()));
+        }
+
+        List<Long> ids = query.orderBy(getOrderSpecifier(condition.getSort()))
                 .limit(condition.getSize())
                 .fetch();
 
@@ -50,6 +57,8 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
         List<JobMaster> results = queryFactory
                 .selectFrom(jobMaster)
                 .join(jobMaster.company, company).fetchJoin()
+                .leftJoin(jobMaster.jobMasterSkills, jobMasterSkill).fetchJoin()
+                .leftJoin(jobMasterSkill.skill, skill).fetchJoin()
                 .where(jobMaster.id.in(ids))
                 .fetch();
 
@@ -76,31 +85,41 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
                 .or(company.name.contains(keyword));
     }
 
-    private OrderSpecifier<?> getOrderSpecifier(String sort) {
+    private OrderSpecifier[] getOrderSpecifier(String sort) {
         if ("DEADLINE_ASC".equalsIgnoreCase(sort)) {
-            return new OrderSpecifier<>(Order.ASC, jobMaster.endDate);
+            return new OrderSpecifier[]{
+                    getStatusRank().asc(),
+                    jobMaster.endDate.asc(),
+                    jobMaster.id.desc()
+            };
         }
-        return new OrderSpecifier<>(Order.DESC, jobMaster.id);
+        return new OrderSpecifier[]{jobMaster.id.desc()};
     }
 
-    private BooleanExpression cursorCondition(Long cursorId, String sort) {
-        if (cursorId == null)
+    private NumberExpression<Integer> getStatusRank() {
+        return new CaseBuilder()
+                .when(jobMaster.status.eq(JobStatus.OPEN)).then(1)
+                .otherwise(2);
+    }
+
+    private BooleanExpression cursorCondition(CursorTokenUtil.CursorData cursorData, String sort) {
+        if (cursorData == null)
             return null;
 
+        Long cursorId = cursorData.cursorId;
+        LocalDate cursorEndDate = cursorData.cursorEndDate;
+        JobStatus cursorStatus = cursorData.cursorStatus;
+
         if ("DEADLINE_ASC".equalsIgnoreCase(sort)) {
-            LocalDate cursorEndDate = queryFactory
-                    .select(jobMaster.endDate)
-                    .from(jobMaster)
-                    .where(jobMaster.id.eq(cursorId))
-                    .fetchOne();
+            Integer cursorRank = (cursorStatus == JobStatus.OPEN) ? 1 : 2;
+            NumberExpression<Integer> statusRank = getStatusRank();
 
-            if (cursorEndDate == null)
-                return null;
-
-            return jobMaster.endDate.gt(cursorEndDate)
-                    .or(jobMaster.endDate.eq(cursorEndDate).and(jobMaster.id.lt(cursorId)));
+            return statusRank.gt(cursorRank)
+                    .or(statusRank.eq(cursorRank).and(jobMaster.endDate.gt(cursorEndDate)))
+                    .or(statusRank.eq(cursorRank).and(jobMaster.endDate.eq(cursorEndDate))
+                            .and(jobMaster.id.lt(cursorId)));
         }
 
-        return jobMaster.id.lt(cursorId);
+        return jobMaster.id.lt(cursorData.cursorId);
     }
 }

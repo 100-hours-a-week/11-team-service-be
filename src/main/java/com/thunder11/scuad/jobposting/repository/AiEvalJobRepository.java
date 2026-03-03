@@ -9,9 +9,10 @@ import com.thunder11.scuad.jobposting.domain.type.AnalysisType;
 
 public interface AiEvalJobRepository extends JpaRepository<AiEvalJob, Long> {
 
-    Optional<AiEvalJob> findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(Long applicationId,
-            AnalysisType analysisType);
+        Optional<AiEvalJob> findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(Long applicationId,
+                        AnalysisType analysisType);
 
-    Optional<AiEvalJob> findFirstByRequestedByUserIdAndJobApplicationJobMasterIdOrderByIdDesc(Long userId,
-            Long jobMasterId);
+        Optional<AiEvalJob> findFirstByRequestedByUserIdAndJobApplicationJobMasterIdAndAnalysisTypeOrderByIdDesc(
+                        Long userId,
+                        Long jobMasterId, AnalysisType analysisType);
 }

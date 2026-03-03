@@ -20,12 +20,9 @@ import com.thunder11.scuad.auth.security.UserPrincipal;
 import com.thunder11.scuad.common.response.ApiResponse;
 import com.thunder11.scuad.jobposting.domain.ApplicationDocument;
 import com.thunder11.scuad.jobposting.dto.request.AiAnalysisRequest;
-import com.thunder11.scuad.jobposting.dto.response.AiAnalysisResponse;
-import com.thunder11.scuad.jobposting.dto.response.AiEvaluationResultResponse;
-import com.thunder11.scuad.jobposting.dto.response.DocumentResponse;
-import com.thunder11.scuad.jobposting.dto.response.MyApplicationResponse;
 import com.thunder11.scuad.jobposting.service.JobApplicationService;
 import com.thunder11.scuad.jobposting.service.JopApplicationAnalysisService;
+import com.thunder11.scuad.jobposting.dto.response.*;
 
 @Slf4j
 @RestController
@@ -47,6 +44,28 @@ public class JobApplicationController {
                 return ApiResponse.of(200, "AI_EVALUATION_FOUND", "종합 평가 결과를 조회했습니다.", result);
         }
 
+        @GetMapping("/{applicationId}/analyses/resume")
+        public ApiResponse<AiResumeAnalysisResponse> getResumeAnalysisResult(
+                @PathVariable("applicationId") Long applicationId,
+                @AuthenticationPrincipal UserPrincipal principal) {
+            AiResumeAnalysisResponse result = jopApplicationAnalysisService
+                    .getResumeAnalysisResult(principal.getUserId(), applicationId);
+
+            return ApiResponse.of(200, "RESUME_ANALYSIS_FOUND", "이력서 분석 결과를 조회했습니다.", result);
+        }
+
+        @GetMapping("{applicationId}/analyses/portfolio")
+        public ApiResponse<AiPortfolioAnalysisResponse> getPortfolioAnalysisResult(
+                @PathVariable("applicationId") Long applicationId,
+                @AuthenticationPrincipal UserPrincipal principal) {
+            AiPortfolioAnalysisResponse result = jopApplicationAnalysisService
+                    .getPortfolioAnalysisResult(principal.getUserId(), applicationId);
+
+            return ApiResponse.of(200, "PORTFOLIO_ANALYSIS_FOUND", "포트폴리오 분석 결과를 조회했습니다.", result);
+        }
+
+
+
         @GetMapping("/me")
         public ApiResponse<List<MyApplicationResponse>> getMyApplications(
                 @RequestParam(required = false) String keyword,
@@ -55,7 +74,16 @@ public class JobApplicationController {
             List<MyApplicationResponse> result = jobApplicationService.getMyApplications(principal.getUserId(), keyword);
 
             return ApiResponse.of(200, "MY_APPLICATION_LIST_SUCCESS", "내 지원 목록 조회 성공", result);
+        }
 
+        @GetMapping("/{applicationId}")
+        public ApiResponse<JobApplicationDetailResponse> getApplicationDetail(
+                @PathVariable("applicationId") Long applicationId,
+                @AuthenticationPrincipal UserPrincipal principal
+        ) {
+            JobApplicationDetailResponse result = jobApplicationService.getJobApplicationDetail(principal.getUserId(), applicationId);
+
+            return ApiResponse.of(200, " APPLICATION_DETAIL_SUCCESS", "지원 내역 상세 조회 성공", result);
         }
 
         @PostMapping("/{applicationId}/documents")
