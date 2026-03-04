@@ -1,7 +1,13 @@
 package com.thunder11.scuad.common.config;
 
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,6 +38,38 @@ public class SecurityConfig {
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
+
+    // 인증 실패 EntryPoint: 토큰이 없거나 만료된 경우 401 반환
+    @Bean
+    public AuthenticationEntryPoint authenticationEntryPoint() {
+        return (request, response, authException) -> {
+            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8");
+            response.getWriter().write(
+                new ObjectMapper().writeValueAsString(Map.of(
+                    "status", 401,
+                    "code", "UNAUTHORIZED",
+                    "message", "인증이 필요합니다."
+                ))
+            );
+        };
+    }
+
+    // 권한 없음 핸들러: 인증은 됐지만 권한이 없는 경우 403 반환
+    @Bean
+    public AccessDeniedHandler accessDeniedHandler() {
+        return (request, response, accessDeniedException) -> {
+            response.setStatus(HttpStatus.FORBIDDEN.value());
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8");
+            response.getWriter().write(
+                new ObjectMapper().writeValueAsString(Map.of(
+                    "status", 403,
+                    "code", "FORBIDDEN",
+                    "message", "권한이 없습니다."
+                ))
+            );
+        };
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -69,7 +107,14 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
 
                 // JWT 인증 필터 추가 (UsernamePasswordAuthenticationFilter 앞에 배치)
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+
+                // 인증/인가 실패 시 커스텀 핸들러 등록
+                // - 401: 토큰 없음/만료 (프론트에서 자동 재발급 시도 트리거)
+                // - 403: 인증은 됐지만 권한 없음 (재발급 없이 에러 처리)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authenticationEntryPoint())
+                        .accessDeniedHandler(accessDeniedHandler()));
 
         return http.build();
     }
