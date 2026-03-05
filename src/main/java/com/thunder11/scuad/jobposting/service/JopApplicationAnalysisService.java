@@ -159,19 +159,6 @@ public class JopApplicationAnalysisService {
             throw new ApiException(ErrorCode.NOT_FOUND, "이력서가 없습니다.");
         }
 
-        if (analysisType == AnalysisType.ALL) {
-            boolean hasPortfolio = jobApplication.getApplicationDocuments().stream()
-                    .anyMatch(d -> d.getDocType() == ApplicationDocumentType.PORTFOLIO);
-
-            createJobOnlyWithPending(jobApplication, userId, AnalysisType.EVALUATION);
-            createJobOnlyWithPending(jobApplication, userId, AnalysisType.RESUME);
-            if(hasPortfolio) {
-                createJobOnlyWithPending(jobApplication, userId, AnalysisType.PORTFOLIO);
-            }
-            eventPublisher.publishEvent(new AiAnalysisCreateEvent(userId, jobApplication.getJobMaster().getId(), AnalysisType.ALL));
-            return null;
-        }
-
         aiEvalJobRepository.findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(applicationId, analysisType)
                 .ifPresent(aiEvalJob -> {
                     if (aiEvalJob.getStatus() == AiJobStatus.PROCESSING) {
@@ -194,20 +181,6 @@ public class JopApplicationAnalysisService {
                 savedAiEvalJob.getId(), jobApplication.getId(), savedAiEvalJob.getStatus());
 
         eventPublisher.publishEvent(new AiAnalysisCreateEvent(userId, jobApplication.getJobMaster().getId(), analysisType));
-
-        return savedAiEvalJob.getId();
-    }
-
-    private Long createJobOnlyWithPending(JobApplication jobApplication, Long userId, AnalysisType analysisType) {
-        AiEvalJob aiEvalJob = AiEvalJob.builder()
-                .jobApplication(jobApplication)
-                .requestedBy(jobApplication.getUser())
-                .analysisType(analysisType)
-                .status(AiJobStatus.PENDING)
-                .build();
-
-        AiEvalJob savedAiEvalJob = aiEvalJobRepository.save(aiEvalJob);
-        log.info("AI 평가 접수 완료(PENDING/이벤트 미발행): ID={}, Type={}", savedAiEvalJob.getId(), analysisType);
 
         return savedAiEvalJob.getId();
     }
