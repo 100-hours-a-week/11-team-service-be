@@ -392,8 +392,13 @@ public class ChatRoomService {
     public void joinChatRoom(Long chatRoomId, Long userId) {
         log.info("채팅방 입장 시작: chatRoomId={}, userId={}", chatRoomId, userId);
 
-        // 1. 채팅방 존재 확인
-        ChatRoom chatRoom = chatRoomRepository.findByIdNotDeleted(chatRoomId)
+        // 1. 채팅방 조회 + 비관적 락 획득 (SELECT FOR UPDATE)
+        // 변경 이유: 기존 findByIdNotDeleted()는 락 없이 조회하므로
+        //           count() → save() 사이 gap에서 두 트랜잭션이 동시에 정원 체크를 통과하는
+        //           race condition이 발생했음 (k6 테스트로 재현 확인)
+        //           findByIdWithLock()으로 변경하면 첫 번째 트랜잭션이 commit할 때까지
+        //           두 번째 트랜잭션이 대기하므로 정원 체크가 항상 최신 값 기준으로 직렬화됨
+        ChatRoom chatRoom = chatRoomRepository.findByIdWithLock(chatRoomId)
                 .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
 
         // 2. 채팅방 상태 확인 (ACTIVE만 입장 가능)
