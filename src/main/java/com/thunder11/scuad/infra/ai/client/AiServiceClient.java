@@ -19,7 +19,7 @@ import com.thunder11.scuad.infra.ai.dto.response.*;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class AiServiceClient {
+public class AiServiceClient implements AiComparePort {
 
     private final WebClient webClient;
 
