@@ -60,6 +60,13 @@ spring:
       max-file-size: 20MB
       max-request-size: 20MB
 
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+
 kakao:
   client-id: ${KAKAO_CLIENT_ID:default-client-id}
   client-secret: ${KAKAO_CLIENT_SECRET:default-client-secret}
