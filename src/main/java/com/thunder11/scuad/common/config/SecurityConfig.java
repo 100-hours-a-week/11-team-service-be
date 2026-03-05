@@ -91,6 +91,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-postings/{jobMasterId}").permitAll()
                         // 헬스 체크는 퍼블릭 허용
                         .requestMatchers("/api/health").permitAll()
+                        // [로컬 전용] 부하 테스트용 토큰 발급 API
+                        .requestMatchers("/api/test/**").permitAll()
+                        .requestMatchers("/api/internal/**").permitAll()
                         // Actuator 엔드포인트 퍼블릭 허용
                         .requestMatchers("/actuator/**").permitAll()
                         // 채용공고 조회는 퍼블릭 허용 (임시)
