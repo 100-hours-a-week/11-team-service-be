@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.dao.DataIntegrityViolationException;
+
 import com.thunder11.scuad.auth.domain.*;
 import com.thunder11.scuad.auth.dto.TokenRefreshResponse;
 import com.thunder11.scuad.common.exception.ApiException;
@@ -103,42 +105,57 @@ public class AuthService {
     // 신규 사용자 회원가입 처리
     // 카카오 정보로 User와 UserOAuthAccount 생성
     private UserOAuthAccount registerNewUser(KakaoUserInfoResponse userInfo) {
-        // 1. User 엔티티 생성
-        String nickname = generateUniqueNickname(userInfo);
-        
-        User newUser = User.builder()
-                .nickname(nickname)
-                .role(Role.USER)  // 기본 역할
-                .status(UserStatus.ACTIVE)  // 활성 상태
-                .build();
-        
-        User savedUser = userRepository.save(newUser);
-        log.info("신규 사용자 생성: userId={}, nickname={}", savedUser.getUserId(), nickname);
+        // 닉네임 중복 race condition 방지를 위해 existsByNickname() 체크를 제거하고
+        // DB UNIQUE 제약을 방어막으로 사용.
+        // 충돌 시 DataIntegrityViolationException을 잡아 suffix를 붙여 재시도.
+        // 최대 10회로 상한을 두어 무한 루프 방지.
+        String baseNickname = extractBaseNickname(userInfo);
+        int maxRetry = 10;
 
-        // 2. UserOAuthAccount 엔티티 생성
-        String email = extractEmail(userInfo);
-        
-        UserOAuthAccount oAuthAccount = UserOAuthAccount.builder()
-                .user(savedUser)
-                .email(email)
-                .provider(OAuthProvider.KAKAO)
-                .providerUserId(String.valueOf(userInfo.getId()))
-                .providerEmail(email)
-                .connectedAt(LocalDateTime.now())
-                .build();
+        for (int attempt = 0; attempt < maxRetry; attempt++) {
+            String candidateNickname = attempt == 0 ? baseNickname : baseNickname + attempt;
 
-        UserOAuthAccount savedOAuthAccount = oAuthAccountRepository.save(oAuthAccount);
-        log.info("OAuth 계정 연동 완료: provider=KAKAO, kakaoUserId={}", userInfo.getId());
+            try {
+                // 1. User 엔티티 생성 및 즉시 flush (DB UNIQUE 제약 위반 즉시 감지)
+                User newUser = User.builder()
+                        .nickname(candidateNickname)
+                        .role(Role.USER)
+                        .status(UserStatus.ACTIVE)
+                        .build();
 
-        return savedOAuthAccount;
+                User savedUser = userRepository.saveAndFlush(newUser);
+                log.info("신규 사용자 생성: userId={}, nickname={}", savedUser.getUserId(), candidateNickname);
+
+                // 2. UserOAuthAccount 엔티티 생성
+                String email = extractEmail(userInfo);
+
+                UserOAuthAccount oAuthAccount = UserOAuthAccount.builder()
+                        .user(savedUser)
+                        .email(email)
+                        .provider(OAuthProvider.KAKAO)
+                        .providerUserId(String.valueOf(userInfo.getId()))
+                        .providerEmail(email)
+                        .connectedAt(LocalDateTime.now())
+                        .build();
+
+                UserOAuthAccount savedOAuthAccount = oAuthAccountRepository.save(oAuthAccount);
+                log.info("OAuth 계정 연동 완료: provider=KAKAO, kakaoUserId={}", userInfo.getId());
+
+                return savedOAuthAccount;
+
+            } catch (DataIntegrityViolationException e) {
+                // 닉네임 unique 제약 위반 → suffix 붙여 재시도
+                log.warn("닉네임 충돌, 재시도: nickname={}, attempt={}", candidateNickname, attempt + 1);
+            }
+        }
+
+        // 최대 재시도 초과 (정상적인 상황에서는 발생하지 않음)
+        log.error("닉네임 생성 실패: baseNickname={}, maxRetry={}", baseNickname, maxRetry);
+        throw new ApiException(ErrorCode.INTERNAL_ERROR);
     }
 
-    // 고유한 닉네임 생성
-// 카카오 닉네임이 중복이면 뒤에 숫자 추가
-    private String generateUniqueNickname(KakaoUserInfoResponse userInfo) {
-        String baseNickname = "사용자";  // 기본값을 먼저 설정
-
-        // Null-safe 체크: 각 단계마다 null 확인
+    // 카카오 닉네임 추출 (Null-safe)
+    private String extractBaseNickname(KakaoUserInfoResponse userInfo) {
         try {
             if (userInfo != null &&
                     userInfo.getKakaoAccount() != null &&
@@ -146,25 +163,14 @@ public class AuthService {
 
                 String kakaoNickname = userInfo.getKakaoAccount().getProfile().getNickname();
 
-                // 카카오 닉네임이 있고 비어있지 않으면 사용
                 if (kakaoNickname != null && !kakaoNickname.trim().isEmpty()) {
-                    baseNickname = kakaoNickname;
+                    return kakaoNickname;
                 }
             }
         } catch (Exception e) {
             log.warn("카카오 닉네임 추출 실패, 기본값 사용: {}", e.getMessage());
         }
-
-        // 중복 체크 및 고유 닉네임 생성
-        String nickname = baseNickname;
-        int suffix = 1;
-        while (userRepository.existsByNickname(nickname)) {
-            nickname = baseNickname + suffix;
-            suffix++;
-        }
-
-        log.info("생성된 닉네임: {}", nickname);
-        return nickname;
+        return "사용자";
     }
 
     // 이메일 추출 (없을 수 있음)
