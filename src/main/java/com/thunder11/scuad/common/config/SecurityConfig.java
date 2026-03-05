@@ -85,6 +85,10 @@ public class SecurityConfig {
 
                 // URL별 권한 설정
                 .authorizeHttpRequests(auth -> auth
+                        // 로컬 전용 테스트 토큰 발급 엔드포인트 (LocalTokenController)
+                        // @Profile("local")로 빈 자체가 로컬에서만 등록되지만,
+                        // Security 필터는 프로파일과 무관하게 동작하므로 여기서도 명시적으로 허용
+                        .requestMatchers("/local/**").permitAll()
                         // 카카오 OAuth 관련 URL은 모두 퍼블릭 허용
                         .requestMatchers("/api/v1/auth/kakao/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-postings").permitAll()
