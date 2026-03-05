@@ -15,7 +15,7 @@ import com.thunder11.scuad.chat.repository.ChatRoomMemberRepository;
 import com.thunder11.scuad.chat.repository.ChatRoomRepository;
 import com.thunder11.scuad.common.exception.ApiException;
 import com.thunder11.scuad.common.exception.ErrorCode;
-import com.thunder11.scuad.infra.ai.client.AiServiceClient;
+import com.thunder11.scuad.infra.ai.client.AiComparePort;
 import com.thunder11.scuad.infra.ai.dto.request.AiCompareRequest;
 import com.thunder11.scuad.infra.ai.dto.response.AiCompareResponse;
 import com.thunder11.scuad.jobposting.domain.AiApplicantComparison;
@@ -35,7 +35,7 @@ public class ChatMemberComparisonService {
     private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final JobApplicationRepository jobApplicationRepository;
     private final AiApplicantComparisonRepository aiApplicantComparisonRepository;
-    private final AiServiceClient aiServiceClient;
+    private final AiComparePort aiComparePort;
 
     @Transactional
     public ComparisonResponse compare(Long chatRoomId, Long requestUserId, Long chatRoomMemberId) {
@@ -99,7 +99,7 @@ public class ChatMemberComparisonService {
                 .competitor(String.valueOf(competitorApplication.getUser().getUserId()))
                 .build();
 
-        AiCompareResponse aiResponse = aiServiceClient.compareApplicants(aiRequest);
+        AiCompareResponse aiResponse = aiComparePort.compareApplicants(aiRequest);
 
         // AI 응답을 도메인 객체로 변환
         List<ComparisonMetric> metrics = aiResponse.getComparisonMetrics().stream()
