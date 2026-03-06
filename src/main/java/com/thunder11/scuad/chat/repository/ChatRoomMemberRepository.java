@@ -49,6 +49,35 @@ public interface ChatRoomMemberRepository extends JpaRepository<ChatRoomMember, 
             "ORDER BY CASE WHEN crm.role = 'HOST' THEN 0 ELSE 1 END, crm.joinedAt ASC")
     java.util.List<ChatRoomMember> findAllActiveMembersByChatRoomId(@Param("chatRoomId") Long chatRoomId);
 
+    // 채팅방 ID 목록 기반 현재 인원 수 일괄 조회 (IN 쿼리)
+    // 사용 목적: getChatRoomsByJobPosting, getMyChatRooms 의 N+1 제거
+    //           chatRoomId마다 count 쿼리를 N번 호출하는 대신 IN 쿼리 1번으로 대체
+    @Query("SELECT crm.chatRoomId, COUNT(crm) FROM ChatRoomMember crm " +
+            "WHERE crm.chatRoomId IN :chatRoomIds " +
+            "AND crm.kickedAt IS NULL " +
+            "GROUP BY crm.chatRoomId")
+    java.util.List<Object[]> countByChatRoomIds(@Param("chatRoomIds") java.util.List<Long> chatRoomIds);
+
+    // 특정 사용자가 참여 중인 채팅방 ID 목록 일괄 조회 (IN 쿼리)
+    // 사용 목적: getChatRoomsByJobPosting 의 "이미 참여 중" 확인 N번 → 1번으로 대체
+    @Query("SELECT crm.chatRoomId FROM ChatRoomMember crm " +
+            "WHERE crm.chatRoomId IN :chatRoomIds " +
+            "AND crm.userId = :userId " +
+            "AND crm.kickedAt IS NULL")
+    java.util.List<Long> findJoinedRoomIdsByUserId(
+            @Param("chatRoomIds") java.util.List<Long> chatRoomIds,
+            @Param("userId") Long userId);
+
+    // 특정 사용자가 강퇴된 채팅방 ID 목록 일괄 조회 (IN 쿼리)
+    // 사용 목적: getChatRoomsByJobPosting 의 "강퇴 이력" 확인 N번 → 1번으로 대체
+    @Query("SELECT crm.chatRoomId FROM ChatRoomMember crm " +
+            "WHERE crm.chatRoomId IN :chatRoomIds " +
+            "AND crm.userId = :userId " +
+            "AND crm.kickedAt IS NOT NULL")
+    java.util.List<Long> findKickedRoomIdsByUserId(
+            @Param("chatRoomIds") java.util.List<Long> chatRoomIds,
+            @Param("userId") Long userId);
+
     // 내가 참여 중인 채팅방 목록 조회 (커서 기반 페이징, 최신 참여 순)
     // 테이블 정의서의 idx_chat_members_user 인덱스 활용
     //       (user_id, kicked_at, joined_at DESC)로 최적화된 쿼리
