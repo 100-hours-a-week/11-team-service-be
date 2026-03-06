@@ -4,6 +4,5 @@ public enum AnalysisType {
     EVALUATION,
     RESUME,
     PORTFOLIO,
-    COMPARISON,
-    ALL
+    COMPARISON
 }

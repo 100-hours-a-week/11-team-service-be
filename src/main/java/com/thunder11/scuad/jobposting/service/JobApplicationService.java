@@ -69,7 +69,12 @@ public class JobApplicationService {
             saveDocument(application, "PORTFOLIO", portfolio);
         }
 
-        analysisService.createEvaluationJob(application.getId(), userId, "ALL");
+        analysisService.createEvaluationJob(application.getId(), userId, "EVALUATION");
+        analysisService.createEvaluationJob(application.getId(), userId, "RESUME");
+
+        if (portfolio != null && !portfolio.isEmpty()) {}
+        analysisService.createEvaluationJob(application.getId(), userId, "PORTFOLIO");
+
 
         return application.getId();
     }
