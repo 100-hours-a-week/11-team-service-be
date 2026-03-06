@@ -68,11 +68,9 @@ public class JobPostingAnalysisService {
             JobPost jobPost = existingJobPost.get();
             JobMaster jobMaster = jobPost.getJobMaster();
 
-            // If DRAFT and same user -> Delete and re-analyze
             if (jobPost.getRegistrationStatus() == RegistrationStatus.DRAFT && jobPost.getCreatedBy().equals(userId)) {
                 log.info("기존 DRAFT 공고 삭제 후 재분석: ID {}", jobPost.getId());
                 jobPostingManagementService.deleteJobPosting(jobMaster.getId(), userId);
-                // Proceed to new analysis below...
             } else {
                 log.info("URL 중복 발견 기존 공고 반환: ID{}", jobPost.getId());
 
