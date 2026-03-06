@@ -22,6 +22,15 @@ import com.thunder11.scuad.common.entity.BaseTimeEntity;
                 // (my_application_id, competitor_application_id) 조합으로 중복 체크 조회 최적화
                 @Index(name = "idx_comparison_my_competitor",
                         columnList = "my_application_id, competitor_application_id")
+        },
+        uniqueConstraints = {
+                // DB 레벨에서 동일 비교 조합 중복 저장 방지
+                // race condition 시 나중에 INSERT된 건이 DataIntegrityViolationException 발생
+                // → ChatMemberComparisonService에서 catch 후 기존 결과 반환
+                @UniqueConstraint(
+                        name = "uq_comparison_my_competitor",
+                        columnNames = {"my_application_id", "competitor_application_id"}
+                )
         }
 )
 
