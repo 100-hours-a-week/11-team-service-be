@@ -37,6 +37,7 @@ public class ChatMemberComparisonService {
     private final JobApplicationRepository jobApplicationRepository;
     private final AiApplicantComparisonRepository aiApplicantComparisonRepository;
     private final AiServiceClient aiServiceClient;
+    private final AiComparisonSaveHelper aiComparisonSaveHelper;
 
     @Transactional
     public ComparisonResponse compare(Long chatRoomId, Long requestUserId, Long chatRoomMemberId) {
@@ -107,7 +108,6 @@ public class ChatMemberComparisonService {
                 .map(m -> new ComparisonMetric(m.getName(), m.getMyScore(), m.getCompetitorScore()))
                 .collect(Collectors.toList());
 
-        // DB 저장
         AiApplicantComparison comparison = AiApplicantComparison.builder()
                 .jobMaster(jobMaster)
                 .myApplication(myApplication)
@@ -118,12 +118,13 @@ public class ChatMemberComparisonService {
                 .build();
 
         // race condition 대비: UNIQUE 제약 위반 시 이미 저장된 결과를 조회해서 반환
-        // 이유: 동시 요청으로 AI가 2번 호출되더라도 나중에 저장 시도한 건은
-        //       DataIntegrityViolationException으로 차단되고, 먼저 저장된 결과를 반환
-        //       → 사용자는 두 요청 모두 정상 응답을 받음
+        // REQUIRES_NEW 독립 트랜잭션으로 분리한 이유:
+        //   같은 트랜잭션 안에서 예외 발생 시 JPA 세션이 오염(rollback-only)되어
+        //   catch 후 findBy 시도 시 AssertionFailure 발생 → 이슈11과 동일한 문제
+        //   REQUIRES_NEW로 분리하면 예외 발생 시 내부 트랜잭션만 롤백되고
+        //   외부 세션은 깨끗하게 유지되어 findBy가 정상 동작함
         try {
-            AiApplicantComparison saved = aiApplicantComparisonRepository.save(comparison);
-            log.info("AI 비교 결과 저장 완료: comparisonId={}", saved.getId());
+            AiApplicantComparison saved = aiComparisonSaveHelper.trySave(comparison);
             return ComparisonResponse.from(saved);
         } catch (DataIntegrityViolationException e) {
             log.warn("AI 비교 결과 중복 저장 감지, 기존 결과 반환: myApplicationId={}, competitorApplicationId={}",
