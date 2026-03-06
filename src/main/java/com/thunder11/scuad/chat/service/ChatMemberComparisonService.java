@@ -3,6 +3,7 @@ package com.thunder11.scuad.chat.service;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -116,9 +117,22 @@ public class ChatMemberComparisonService {
                 .weaknessesReport(aiResponse.getWeaknessesReport())
                 .build();
 
-        AiApplicantComparison saved = aiApplicantComparisonRepository.save(comparison);
-        log.info("AI 비교 결과 저장 완료: comparisonId={}", saved.getId());
-
-        return ComparisonResponse.from(saved);
+        // race condition 대비: UNIQUE 제약 위반 시 이미 저장된 결과를 조회해서 반환
+        // 이유: 동시 요청으로 AI가 2번 호출되더라도 나중에 저장 시도한 건은
+        //       DataIntegrityViolationException으로 차단되고, 먼저 저장된 결과를 반환
+        //       → 사용자는 두 요청 모두 정상 응답을 받음
+        try {
+            AiApplicantComparison saved = aiApplicantComparisonRepository.save(comparison);
+            log.info("AI 비교 결과 저장 완료: comparisonId={}", saved.getId());
+            return ComparisonResponse.from(saved);
+        } catch (DataIntegrityViolationException e) {
+            log.warn("AI 비교 결과 중복 저장 감지, 기존 결과 반환: myApplicationId={}, competitorApplicationId={}",
+                    myApplication.getId(), competitorApplication.getId());
+            return aiApplicantComparisonRepository
+                    .findByMyApplication_IdAndCompetitorApplication_Id(
+                            myApplication.getId(), competitorApplication.getId())
+                    .map(ComparisonResponse::from)
+                    .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL_ERROR));
+        }
     }
 }
