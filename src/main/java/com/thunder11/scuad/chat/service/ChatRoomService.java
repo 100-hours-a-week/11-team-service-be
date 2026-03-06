@@ -2,6 +2,7 @@ package com.thunder11.scuad.chat.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -27,6 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.thunder11.scuad.chat.domain.ChatRoom;
 import com.thunder11.scuad.chat.domain.ChatRoomMember;
 import com.thunder11.scuad.chat.domain.type.MemberRole;
+import com.thunder11.scuad.chat.dto.ChatRoomPreloadedData;
 import com.thunder11.scuad.chat.dto.JoinEligibility;
 import com.thunder11.scuad.chat.dto.request.ChatRoomCreateRequest;
 import com.thunder11.scuad.chat.dto.response.*;
@@ -95,16 +97,11 @@ public class ChatRoomService {
     }
 
     // ChatRoom -> ChatRoomSummaryResponse 변환
-    private ChatRoomSummaryResponse convertToSummary(ChatRoom room, Long userId) {
-        // 현재 인원 수 조회
-        long currentParticipants = chatRoomMemberRepository.countByChatRoomIdAndKickedAtIsNull(room.getChatRoomId());
-
-        // 방장 닉네임 조회
-        String hostNickname = userRepository.findNicknameByUserId(room.getCreatedBy())
-                .orElse("알 수 없음");
-
-        // 입장 가능 여부 및 상태를 한 번에 판단
-        JoinEligibility eligibility = determineJoinEligibility(room, currentParticipants, userId);
+    // 개선: stream 밖에서 미리 조회한 ChatRoomPreloadedData를 받아 DB 재조회 없이 Map 조회만 수행
+    private ChatRoomSummaryResponse convertToSummary(ChatRoom room, Long userId, ChatRoomPreloadedData data) {
+        long currentParticipants = data.participantCountMap().getOrDefault(room.getChatRoomId(), 0L);
+        String hostNickname = data.hostNicknameMap().getOrDefault(room.getCreatedBy(), "알 수 없음");
+        JoinEligibility eligibility = determineJoinEligibility(room, currentParticipants, data);
 
         return ChatRoomSummaryResponse.builder()
                 .chatRoomId(room.getChatRoomId())
@@ -123,13 +120,10 @@ public class ChatRoomService {
     }
 
     // 입장 가능 여부 및 상태를 한 번에 판단
-    private JoinEligibility determineJoinEligibility(ChatRoom room, long currentParticipants, Long userId) {
+    // 개선: Map/Set 조회만 수행 — 기존에는 채팅방마다 최대 6번 DB 조회 발생
+    private JoinEligibility determineJoinEligibility(ChatRoom room, long currentParticipants, ChatRoomPreloadedData data) {
         // 1. 이미 참여 중인지 확인
-        boolean alreadyJoined = chatRoomMemberRepository
-                .findByChatRoomIdAndUserIdAndKickedAtIsNull(room.getChatRoomId(), userId)
-                .isPresent();
-
-        if (alreadyJoined) {
+        if (data.joinedRoomIds().contains(room.getChatRoomId())) {
             return JoinEligibility.unavailable("ALREADY_JOINED");
         }
 
@@ -139,54 +133,36 @@ public class ChatRoomService {
         }
 
         // 3. 강퇴 이력 확인
-        boolean isKicked = chatRoomMemberRepository.existsKickedMember(room.getChatRoomId(), userId);
-        if (isKicked) {
+        if (data.kickedRoomIds().contains(room.getChatRoomId())) {
             return JoinEligibility.unavailable("KICKED");
         }
 
         // 4. 지원서 확인
-        Optional<JobApplication> jobApplicationOpt = jobApplicationRepository
-                .findByUserIdAndJobMasterId(userId, room.getJobMasterId());
-
-        if (jobApplicationOpt.isEmpty()) {
+        if (data.jobApplication() == null) {
             return JoinEligibility.unavailable("NO_APPLICATION");
         }
 
-        Long jobApplicationId = jobApplicationOpt.get().getId();
-
         // 5. 서류 제출 확인 (이력서만 필수, 포트폴리오는 선택)
-        boolean hasResume = applicationDocumentRepository
-                .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.RESUME);
-
-        if (!hasResume) {
+        if (!data.hasResume()) {
             return JoinEligibility.unavailable("NO_RESUME");
         }
 
-        // 포트폴리오는 선택 제출이므로 검증하지 않음
-
         // 6. AI 점수 확인
-        Optional<AiApplicantEvaluation> evaluationOpt = aiApplicationEvaluationRepository
-                .findByJobApplicationId(jobApplicationId);
-
-        if (evaluationOpt.isEmpty()) {
+        if (data.evaluation() == null) {
             return JoinEligibility.unavailable("NO_SCORE");
         }
 
         // 7. 커트라인 점수 확인
-        Integer myScore = evaluationOpt.get().getOverallScore();
-        if (myScore < room.getCutlineScore()) {
+        if (data.evaluation().getOverallScore() < room.getCutlineScore()) {
             return JoinEligibility.unavailable("CUTLINE_NOT_MET");
         }
 
         // 8. 같은 공고의 다른 방 참여 여부 확인
-        Optional<ChatRoomMember> otherRoomMember = chatRoomMemberRepository
-                .findByJobApplicationIdAndNotKicked(jobApplicationId);
-
-        if (otherRoomMember.isPresent() && !otherRoomMember.get().getChatRoomId().equals(room.getChatRoomId())) {
+        if (data.otherRoomMember().isPresent()
+                && !data.otherRoomMember().get().getChatRoomId().equals(room.getChatRoomId())) {
             return JoinEligibility.unavailable("ALREADY_JOINED_OTHER");
         }
 
-        // 모든 조건 통과
         return JoinEligibility.available();
     }
 
@@ -228,8 +204,76 @@ public class ChatRoomService {
         }
 
         // 5. ChatRoom -> ChatRoomSummaryResponse 변환
+        // 개선: stream 시작 전 공통 데이터를 IN 쿼리로 일괄 조회 후 Map/Set으로 재사용
+        //       기존: 채팅방마다 8번 DB 조회 → 총 4 + (8 × N)번
+        //       개선: stream 밖 IN 쿼리 8번 고정 → 총 4 + 8번 (채팅방 수 무관)
+
+        List<Long> chatRoomIds = chatRooms.stream()
+                .map(ChatRoom::getChatRoomId)
+                .collect(Collectors.toList());
+
+        // 채팅방별 현재 인원 수 (IN 쿼리 1번)
+        Map<Long, Long> participantCountMap = chatRoomMemberRepository.countByChatRoomIds(chatRoomIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (Long) row[1]
+                ));
+
+        // 방장 닉네임 (IN 쿼리 1번)
+        List<Long> hostIds = chatRooms.stream()
+                .map(ChatRoom::getCreatedBy)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> hostNicknameMap = userRepository.findNicknamesByUserIds(hostIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (String) row[1]
+                ));
+
+        // 현재 사용자가 참여 중인 채팅방 ID (IN 쿼리 1번)
+        java.util.Set<Long> joinedRoomIds = new java.util.HashSet<>(
+                chatRoomMemberRepository.findJoinedRoomIdsByUserId(chatRoomIds, userId));
+
+        // 현재 사용자가 강퇴된 채팅방 ID (IN 쿼리 1번)
+        java.util.Set<Long> kickedRoomIds = new java.util.HashSet<>(
+                chatRoomMemberRepository.findKickedRoomIdsByUserId(chatRoomIds, userId));
+
+        // 지원서, AI 평가, 이력서, 다른 방 참여 여부 — userId+jobMasterId 기준으로 채팅방이 달라도 동일
+        // stream 밖에서 1회만 조회하여 N번 반복 조회 제거
+        Optional<JobApplication> jobApplicationOpt = jobApplicationRepository
+                .findByUserIdAndJobMasterId(userId, jobMasterId);
+
+        JobApplication jobApplication = jobApplicationOpt.orElse(null);
+
+        AiApplicantEvaluation evaluation = null;
+        boolean hasResume = false;
+        Optional<ChatRoomMember> otherRoomMember = Optional.empty();
+
+        if (jobApplication != null) {
+            evaluation = aiApplicationEvaluationRepository
+                    .findByJobApplicationId(jobApplication.getId())
+                    .orElse(null);
+            hasResume = applicationDocumentRepository
+                    .existsByJobApplicationIdAndDocType(jobApplication.getId(), ApplicationDocumentType.RESUME);
+            otherRoomMember = chatRoomMemberRepository
+                    .findByJobApplicationIdAndNotKicked(jobApplication.getId());
+        }
+
+        ChatRoomPreloadedData preloadedData = new ChatRoomPreloadedData(
+                participantCountMap,
+                hostNicknameMap,
+                joinedRoomIds,
+                kickedRoomIds,
+                jobApplication,
+                evaluation,
+                hasResume,
+                otherRoomMember
+        );
+
         List<ChatRoomSummaryResponse> summaries = chatRooms.stream()
-                .map(room -> convertToSummary(room, userId))
+                .map(room -> convertToSummary(room, userId, preloadedData))
                 .collect(Collectors.toList());
 
         // 6. 페이징 정보 생성
