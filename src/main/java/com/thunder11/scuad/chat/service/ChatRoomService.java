@@ -708,6 +708,7 @@ public class ChatRoomService {
     // 내가 참여 중인 채팅방 목록 조회
     // 사용자는 본인이 참여 중인 채팅방 리스트를 확인할 수 있어야 함
     // 최신 참여 순으로 정렬하여 활동성 높은 채팅방을 우선 표시
+    // 개선: stream 내 4번 반복 조회(4N+1) → chatRoomId 기반 IN 쿼리 4번 고정으로 대체
     public MyChatRoomListResponse getMyChatRooms(
             Long userId,
             Long cursor,
@@ -731,33 +732,89 @@ public class ChatRoomService {
                 ? members.subList(0, size)
                 : members;
 
-        // 3. 각 멤버십에 대해 채팅방 정보 조회 및 DTO 변환
+        if (actualMembers.isEmpty()) {
+            return MyChatRoomListResponse.builder()
+                    .chatRooms(List.of())
+                    .pagination(PaginationResponse.builder()
+                            .nextCursor(null)
+                            .hasNext(false)
+                            .size(0)
+                            .build())
+                    .build();
+        }
+
+        // 3. chatRoomId 목록 추출 — 이후 4개 IN 쿼리의 공통 키
+        List<Long> chatRoomIds = actualMembers.stream()
+                .map(ChatRoomMember::getChatRoomId)
+                .collect(Collectors.toList());
+
+        // ── IN 쿼리 일괄 조회 (채팅방 수와 무관하게 각 1번씩, 총 4번) ──────────────
+
+        // 3-1. 채팅방 정보 일괄 조회
+        // 개선 근거: stream 내 findById() N번 → IN 쿼리 1번
+        Map<Long, ChatRoom> chatRoomMap = chatRoomRepository
+                .findAllByChatRoomIdIn(chatRoomIds)
+                .stream()
+                .collect(Collectors.toMap(ChatRoom::getChatRoomId, cr -> cr));
+
+        // 3-2. 채팅방별 현재 인원 수 일괄 조회
+        // 개선 근거: countByChatRoomIdAndKickedAtIsNull() N번 → IN 쿼리 1번 (8N+1 작업 시 추가된 메서드 재사용)
+        Map<Long, Long> participantCountMap = chatRoomMemberRepository
+                .countByChatRoomIds(chatRoomIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (Long) row[1]
+                ));
+
+        // 3-3. 방장 닉네임 일괄 조회
+        // 개선 근거: findNicknameByUserId() N번 → IN 쿼리 1번 (8N+1 작업 시 추가된 메서드 재사용)
+        List<Long> hostIds = chatRoomMap.values().stream()
+                .map(ChatRoom::getCreatedBy)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> hostNicknameMap = userRepository
+                .findNicknamesByUserIds(hostIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (String) row[1]
+                ));
+
+        // 3-4. 채팅방별 마지막 메시지 일괄 조회
+        // 개선 근거: findTopByChatRoomIdOrderBySentAtDesc() N번 → IN + 서브쿼리 1번
+        Map<Long, ChatMessage> lastMessageMap = chatMessageRepository
+                .findLastMessagesByChatRoomIds(chatRoomIds)
+                .stream()
+                .collect(Collectors.toMap(ChatMessage::getChatRoomId, msg -> msg));
+
+        // ─────────────────────────────────────────────────────────────────────
+        // 4. stream 내에서는 Map 조회만 수행 (DB 쿼리 0번)
+        // 개선 근거: 기존에는 채팅방마다 4번 DB 조회 발생 → Map.get()으로 대체하여 쿼리 제거
         List<MyChatRoomResponse> chatRoomResponses = actualMembers.stream()
                 .map(member -> {
-                    // 채팅방 정보 조회
-                    ChatRoom chatRoom = chatRoomRepository.findById(member.getChatRoomId())
-                            .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+                    ChatRoom chatRoom = chatRoomMap.get(member.getChatRoomId());
+                    if (chatRoom == null) {
+                        // 조회 시점과 삭제 시점 사이 race condition 방어 처리
+                        log.warn("멤버십은 있으나 채팅방을 찾을 수 없음: chatRoomId={}", member.getChatRoomId());
+                        return null;
+                    }
 
-                    // 현재 인원 수 조회
-                    long currentParticipants = chatRoomMemberRepository
-                            .countByChatRoomIdAndKickedAtIsNull(chatRoom.getChatRoomId());
+                    long currentParticipants = participantCountMap
+                            .getOrDefault(chatRoom.getChatRoomId(), 0L);
 
-                    // 방장 닉네임 조회
-                    String hostNickname = userRepository.findNicknameByUserId(chatRoom.getCreatedBy())
-                            .orElse("알 수 없음");
+                    String hostNickname = hostNicknameMap
+                            .getOrDefault(chatRoom.getCreatedBy(), "알 수 없음");
 
-                    // 마지막 메시지 조회 (선택)
-                    Optional<ChatMessage> lastMessageOpt = chatMessageRepository
-                            .findTopByChatRoomIdOrderBySentAtDesc(chatRoom.getChatRoomId());
+                    ChatMessage lastMessage = lastMessageMap.get(chatRoom.getChatRoomId());
 
-                    String lastMessagePreview = lastMessageOpt
+                    String lastMessagePreview = Optional.ofNullable(lastMessage)
                             .map(msg -> {
                                 if (msg.getMessageType().name().equals("FILE")) {
                                     return "[파일]";
                                 } else if (msg.getMessageType().name().equals("SYSTEM")) {
                                     return msg.getContent();
                                 } else {
-                                    // TEXT 메시지는 50자로 제한
                                     String content = msg.getContent();
                                     return content.length() > 50
                                             ? content.substring(0, 50) + "..."
@@ -766,7 +823,7 @@ public class ChatRoomService {
                             })
                             .orElse(null);
 
-                    LocalDateTime lastMessageAt = lastMessageOpt
+                    LocalDateTime lastMessageAt = Optional.ofNullable(lastMessage)
                             .map(ChatMessage::getSentAt)
                             .orElse(null);
 
@@ -787,18 +844,19 @@ public class ChatRoomService {
                             .joinedAt(member.getJoinedAt())
                             .build();
                 })
+                .filter(response -> response != null)
                 .collect(Collectors.toList());
 
-        // 4. 다음 커서 계산 (마지막 멤버의 chatRoomMemberId)
+        // 5. 다음 커서 계산 (마지막 멤버의 chatRoomMemberId)
         Long nextCursor = hasNext && !actualMembers.isEmpty()
                 ? actualMembers.get(actualMembers.size() - 1).getChatRoomMemberId()
                 : null;
 
-        // 5. 페이징 정보 생성
+        // 6. 페이징 정보 생성
         PaginationResponse pagination = PaginationResponse.builder()
                 .nextCursor(nextCursor)
                 .hasNext(hasNext)
-                .size(actualMembers.size())
+                .size(chatRoomResponses.size())
                 .build();
 
         log.info("내 채팅방 목록 조회 완료: userId={}, 조회된 방 수={}, hasNext={}",

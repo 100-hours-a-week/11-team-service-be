@@ -52,4 +52,10 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
                         "AND cr.deletedAt IS NULL " +
                         "GROUP BY cr.jobMasterId")
         List<Object[]> countActiveRoomsByJobMasterIds(@Param("jobMasterIds") List<Long> jobMasterIds);
+
+        // 채팅방 ID 목록으로 채팅방 일괄 조회 (IN 쿼리)
+        // 사용 목적: getMyChatRooms 에서 stream 내 findById() N번 → IN 쿼리 1번으로 대체
+        //           멤버십 목록에서 chatRoomId만 먼저 추출한 뒤 한 번에 조회하여 Map으로 캐싱
+        @Query("SELECT cr FROM ChatRoom cr WHERE cr.chatRoomId IN :chatRoomIds AND cr.deletedAt IS NULL")
+        List<ChatRoom> findAllByChatRoomIdIn(@Param("chatRoomIds") List<Long> chatRoomIds);
 }
