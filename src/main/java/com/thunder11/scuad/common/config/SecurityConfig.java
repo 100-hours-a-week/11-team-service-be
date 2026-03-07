@@ -94,6 +94,8 @@ public class SecurityConfig {
                         // [로컬 전용] 부하 테스트용 토큰 발급 API
                         .requestMatchers("/api/test/**").permitAll()
                         .requestMatchers("/api/internal/**").permitAll()
+                        // [로컬 전용] DevAuthController - JWT 직접 발급용 (local 프로파일에서만 빈 등록됨)
+                        .requestMatchers("/dev/**").permitAll()
                         // Actuator 엔드포인트 퍼블릭 허용
                         .requestMatchers("/actuator/**").permitAll()
                         // 채용공고 조회는 퍼블릭 허용 (임시)
