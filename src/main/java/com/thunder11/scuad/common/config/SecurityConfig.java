@@ -46,28 +46,23 @@ public class SecurityConfig {
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8");
             response.getWriter().write(
-                new ObjectMapper().writeValueAsString(Map.of(
-                    "status", 401,
-                    "code", "UNAUTHORIZED",
-                    "message", "인증이 필요합니다."
-                ))
-            );
+                    new ObjectMapper().writeValueAsString(Map.of(
+                            "status", 401,
+                            "code", "UNAUTHORIZED",
+                            "message", "인증이 필요합니다.")));
         };
     }
 
-    // 권한 없음 핸들러: 인증은 됐지만 권한이 없는 경우 403 반환
     @Bean
     public AccessDeniedHandler accessDeniedHandler() {
         return (request, response, accessDeniedException) -> {
             response.setStatus(HttpStatus.FORBIDDEN.value());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8");
             response.getWriter().write(
-                new ObjectMapper().writeValueAsString(Map.of(
-                    "status", 403,
-                    "code", "FORBIDDEN",
-                    "message", "권한이 없습니다."
-                ))
-            );
+                    new ObjectMapper().writeValueAsString(Map.of(
+                            "status", 403,
+                            "code", "FORBIDDEN",
+                            "message", "권한이 없습니다.")));
         };
     }
 
@@ -85,6 +80,11 @@ public class SecurityConfig {
 
                 // URL별 권한 설정
                 .authorizeHttpRequests(auth -> auth
+                        // SSE 비동기 해제 등 내부 통신 허용 (이거 없으면 SSE 종료 시 Access Denied 에러 도배 발생)
+                        .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC,
+                                jakarta.servlet.DispatcherType.ERROR, jakarta.servlet.DispatcherType.FORWARD)
+                        .permitAll()
+
                         // 카카오 OAuth 관련 URL은 모두 퍼블릭 허용
                         .requestMatchers("/api/v1/auth/kakao/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-postings").permitAll()

@@ -18,6 +18,7 @@ import com.thunder11.scuad.infra.ai.dto.response.AiResumeAnalysisResponse;
 import com.thunder11.scuad.infra.rabbitmq.dto.AiResponseMessage;
 import com.thunder11.scuad.jobposting.domain.*;
 import com.thunder11.scuad.jobposting.repository.*;
+import com.thunder11.scuad.notification.service.NotificationService;
 
 @Slf4j
 @Service
@@ -29,6 +30,7 @@ public class AiResultProcessingService {
     private final AiPortfolioAnalysisRepository aiPortfolioAnalysisRepository;
     private final JobMasterRepository jobMasterRepository;
     private final ObjectMapper objectMapper;
+    private final NotificationService notificationService;
 
     @Transactional
     public void processResult(String evalJobId, AiResponseMessage response) {
@@ -61,6 +63,23 @@ public class AiResultProcessingService {
             aiEvalJob.complete();
             aiEvalJobRepository.save(aiEvalJob);
             log.info("AI 분석 완료 처리 - evalJobId: {}, type: {}", evalJobId, aiEvalJob.getAnalysisType());
+            Long userId = aiEvalJob.getJobApplication().getUser().getUserId();
+            String company = aiEvalJob.getJobApplication().getJobMaster().getCompany().getName();
+            String position = aiEvalJob.getJobApplication().getJobMaster().getJobTitle();
+            String jobPostingTitleStr = company + "(" + position + ")";
+            Long applicationId = aiEvalJob.getJobApplication().getId();
+            String notifType = switch (aiEvalJob.getAnalysisType()) {
+                case EVALUATION ->  "AI_EVAL_COMPLETE";
+                case RESUME -> "RESUME_COMPLETE";
+                case PORTFOLIO -> "PORTFOLIO_COMPLETE";
+                default -> "ANALYSIS_COMPLETE";
+            };
+
+            try {
+                notificationService.createAndPush(userId, notifType, jobPostingTitleStr, applicationId);
+            } catch (Exception e) {
+                log.error("알림 발송 중 오류 발생 (결과 저장에는 영향 없음)", e);
+            }
         } catch (Exception e) {
             log.error("AI 결과 저장 실패 - evalJobId: {}", evalJobId, e);
             aiEvalJob.fail(e.getMessage());
