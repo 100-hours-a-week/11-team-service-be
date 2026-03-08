@@ -692,11 +692,23 @@ public class ChatRoomService {
         // 3. 활성 멤버 목록 조회 (HOST 우선, 입장 시간 오름차순)
         List<ChatRoomMember> members = chatRoomMemberRepository.findAllActiveMembersByChatRoomId(chatRoomId);
 
-        // 4. 각 멤버의 닉네임 조회 및 DTO 변환
+        // 4. 닉네임 일괄 조회 후 DTO 변환
+        // 개선: stream 내 findNicknameByUserId() N번 → userId 목록 기반 IN 쿼리 1번으로 대체
+        //       findNicknamesByUserIds는 8N+1 작업 시 추가된 메서드 재사용
+        List<Long> userIds = members.stream()
+                .map(ChatRoomMember::getUserId)
+                .collect(Collectors.toList());
+
+        Map<Long, String> nicknameMap = userRepository.findNicknamesByUserIds(userIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (String) row[1]
+                ));
+
         List<ChatRoomMemberResponse> memberResponses = members.stream()
                 .map(member -> {
-                    String nickname = userRepository.findNicknameByUserId(member.getUserId())
-                            .orElse("알 수 없음");
+                    String nickname = nicknameMap.getOrDefault(member.getUserId(), "알 수 없음");
                     return ChatRoomMemberResponse.of(member, nickname);
                 })
                 .collect(Collectors.toList());
