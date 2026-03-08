@@ -96,6 +96,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/internal/**").permitAll()
                         // Actuator 엔드포인트 퍼블릭 허용
                         .requestMatchers("/actuator/**").permitAll()
+                        // WebSocket 핸드셰이크 경로 허용
+                        // /ws/** 로 설정하는 이유: SockJS가 /ws/info, /ws/{serverId}/{sessionId}/websocket 등
+                        // 하위 경로를 추가로 사용하기 때문에 /** 패턴으로 전체 허용
+                        // 실제 인증은 SecurityConfig가 아니라 WebSocketAuthInterceptor에서 처리
+                        .requestMatchers("/ws/**").permitAll()
                         // 채용공고 조회는 퍼블릭 허용 (임시)
                         .requestMatchers("/api/v1/job-postings/**").permitAll()
                         .requestMatchers("/api/v1/job-postings").permitAll()
