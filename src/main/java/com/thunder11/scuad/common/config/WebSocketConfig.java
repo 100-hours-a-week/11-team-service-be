@@ -1,5 +1,7 @@
 package com.thunder11.scuad.common.config;
 
+import com.thunder11.scuad.chat.websocket.WebSocketAuthInterceptor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
@@ -11,8 +13,10 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 // 폴링(2초마다 GET 반복) → WebSocket(서버가 변경 시에만 push) 전환을 위해 추가
 @Configuration
 @EnableWebSocketMessageBroker
+@RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
+    private final WebSocketAuthInterceptor webSocketAuthInterceptor;
     // 메시지 브로커 설정
     // enableSimpleBroker("/topic"): /topic/chat-rooms/{id} 를 구독한 클라이언트들에게 메시지 브로드캐스트
     // setApplicationDestinationPrefixes("/app"): 클라이언트가 서버로 메시지 보낼 때 사용하는 prefix
@@ -30,6 +34,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
+                .addInterceptors(webSocketAuthInterceptor)  // 핸드셰이크 시 JWT 검증
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
     }
