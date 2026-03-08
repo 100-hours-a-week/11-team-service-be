@@ -93,6 +93,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/health").permitAll()
                         // [로컬 전용] 부하 테스트용 토큰 발급 API
                         .requestMatchers("/api/test/**").permitAll()
+                        // [로컬 전용] DevAuthController — k6 테스트용 JWT 토큰 발급
+                        .requestMatchers("/dev/**").permitAll()
                         .requestMatchers("/api/internal/**").permitAll()
                         // Actuator 엔드포인트 퍼블릭 허용
                         .requestMatchers("/actuator/**").permitAll()
