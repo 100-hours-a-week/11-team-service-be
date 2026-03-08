@@ -94,7 +94,8 @@ public class ChatMessageService {
                 .build();
     }
 
-    // 채팅 메시지 목록 조회 (커서 기반 페이징 + 폴링)
+    // 채팅 메시지 목록 조회 (커서 기반 페이징) — 입장 시 과거 메시지 로드 전용
+    // 신규 메시지 수신은 WebSocket 구독(/topic/chat-rooms/{id})으로 처리
     public ChatMessageListResponse getMessages(
             Long chatRoomId,
             Long userId,

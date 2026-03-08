@@ -26,17 +26,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             Pageable pageable
     );
 
-    // 폴링을 위한 최신 메시지 조회 (특정 messageId 이후의 메시지)
-    @Query("SELECT cm FROM ChatMessage cm " +
-            "WHERE cm.chatRoomId = :chatRoomId " +
-            "AND cm.deletedAt IS NULL " +
-            "AND cm.messageId > :afterMessageId " +
-            "ORDER BY cm.messageId ASC")
-    List<ChatMessage> findNewMessagesSince(
-            @Param("chatRoomId") Long chatRoomId,
-            @Param("afterMessageId") Long afterMessageId
-    );
-
     Optional<ChatMessage> findTopByChatRoomIdOrderBySentAtDesc(Long chatRoomId);
 
     // 채팅방 ID 목록별 마지막 메시지 일괄 조회 (greatest-n-per-group, IN + 서브쿼리)
