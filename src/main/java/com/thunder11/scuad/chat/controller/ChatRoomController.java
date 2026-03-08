@@ -149,18 +149,17 @@ public class ChatRoomController {
     public ApiResponse<ChatMessageListResponse> getMessages(
             @PathVariable Long chatRoomId,
             @RequestParam(required = false) Long cursor,
-            @RequestParam(required = false) Long since,
             @RequestParam(defaultValue = "50") int size,
             @AuthenticationPrincipal UserPrincipal userPrincipal
     ) {
-        log.info("GET /api/v1/chat-rooms/{}/messages - cursor={}, since={}, size={}, userId={}",
-                chatRoomId, cursor, since, size, userPrincipal.getUserId());
+        // WebSocket 전환으로 since 파라미터 제거 — 신규 메시지는 WebSocket으로 수신
+        log.info("GET /api/v1/chat-rooms/{}/messages - cursor={}, size={}, userId={}",
+                chatRoomId, cursor, size, userPrincipal.getUserId());
 
         ChatMessageListResponse response = chatMessageService.getMessages(
                 chatRoomId,
                 userPrincipal.getUserId(),
                 cursor,
-                since,
                 size
         );
 

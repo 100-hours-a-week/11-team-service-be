@@ -13,6 +13,7 @@ import com.thunder11.scuad.file.repository.FileObjectRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +42,7 @@ public class ChatMessageService {
     private final UserRepository userRepository;
     private final FileObjectRepository fileObjectRepository;
     private final S3FileManagementService s3FileManagementService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     private record FileInfo(Long fileId, String fileName, String contentType, Long fileSize) {
     }
@@ -97,11 +99,10 @@ public class ChatMessageService {
             Long chatRoomId,
             Long userId,
             Long cursor,
-            Long since,
             int size
     ) {
-        log.info("메시지 목록 조회 시작: chatRoomId={}, userId={}, cursor={}, since={}, size={}",
-                chatRoomId, userId, cursor, since, size);
+        log.info("메시지 목록 조회 시작: chatRoomId={}, userId={}, cursor={}, size={}",
+                chatRoomId, userId, cursor, size);
 
         // 1. 채팅방 존재 확인
         chatRoomRepository.findByIdNotDeleted(chatRoomId)
@@ -117,47 +118,29 @@ public class ChatMessageService {
             throw new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
         }
 
-        // 3. since와 cursor 동시 사용 검증
-        if (since != null && cursor != null) {
-            log.warn("since와 cursor를 동시에 사용할 수 없습니다: chatRoomId={}, userId={}", chatRoomId, userId);
-            throw new ApiException(ErrorCode.INVALID_INPUT_VALUE);
+
+        // WebSocket 전환으로 since 기반 폴링 제거
+        // 신규 메시지 수신은 WebSocket 구독(/topic/chat-rooms/{id})으로 처리
+        // 이 API는 채팅방 입장 시 과거 메시지 로드(커서 페이징) 용도로만 사용
+        List<ChatMessage> messages = chatMessageRepository.findMessagesByChatRoomIdWithCursor(
+                chatRoomId,
+                cursor,
+                PageRequest.of(0, size + 1)
+        );
+        log.info("과거 메시지 조회 완료: {}개", messages.size());
+
+        // 페이징 정보 계산
+        boolean hasNext = messages.size() > size;
+        if (hasNext) {
+            messages = messages.subList(0, size);
         }
 
-        List<ChatMessage> messages;
-        boolean isPolling = (since != null);
-
-        // 4. 폴링 요청인지 과거 메시지 로드인지 구분
-        if (isPolling) {
-            // 폴링: since 이후의 최신 메시지 조회
-            messages = chatMessageRepository.findNewMessagesSince(chatRoomId, since);
-            log.info("폴링 메시지 조회 완료: {}개", messages.size());
-        } else {
-            // 과거 메시지 로드: 커서 기반 페이징
-            messages = chatMessageRepository.findMessagesByChatRoomIdWithCursor(
-                    chatRoomId,
-                    cursor,
-                    PageRequest.of(0, size + 1)
-            );
-            log.info("과거 메시지 조회 완료: {}개", messages.size());
+        Long nextCursor = null;
+        if (hasNext && !messages.isEmpty()) {
+            nextCursor = messages.get(messages.size() - 1).getMessageId();
         }
 
-        // 5. 페이징 정보 계산 (폴링이 아닐 때만)
-        PaginationResponse pagination = null;
-
-        if (!isPolling) {
-            boolean hasNext = messages.size() > size;
-            if (hasNext) {
-                messages = messages.subList(0, size);
-            }
-
-            Long nextCursor = null;
-            if (hasNext && !messages.isEmpty()) {
-                nextCursor = messages.get(messages.size() - 1).getMessageId();
-            }
-
-            pagination = PaginationResponse.of(nextCursor, hasNext, messages.size());
-        }
-
+        PaginationResponse pagination = PaginationResponse.of(nextCursor, hasNext, messages.size());
         // 6. 발신자 닉네임 일괄 조회 (N+1 문제 해결)
         List<Long> senderIds = messages.stream()
                 .map(ChatMessage::getSenderId)
@@ -204,7 +187,7 @@ public class ChatMessageService {
                 .map(message -> convertToResponse(message, finalNicknameMap, finalFileInfoMap))
                 .collect(Collectors.toList());
 
-        log.info("메시지 목록 조회 완료: 총 {}개, 폴링={}", messageResponses.size(), isPolling);
+        log.info("메시지 목록 조회 완료: 총 {}개", messageResponses.size());
 
         return ChatMessageListResponse.of(messageResponses, pagination);
     }
@@ -304,6 +287,14 @@ public class ChatMessageService {
             }
         }
 
-        return convertToResponse(savedMessage, nicknameMap, fileInfoMap);
+        ChatMessageResponse result = convertToResponse(savedMessage, nicknameMap, fileInfoMap);
+
+        // WebSocket 브로드캐스트
+        // 해당 채팅방을 구독 중인 모든 클라이언트에게 새 메시지를 즉시 push
+        // 클라이언트는 /topic/chat-rooms/{chatRoomId} 를 구독하고 있어야 수신 가능
+        messagingTemplate.convertAndSend("/topic/chat-rooms/" + chatRoomId, result);
+        log.info("WebSocket 브로드캐스트 완료: chatRoomId={}, messageId={}", chatRoomId, savedMessage.getMessageId());
+
+        return result;
     }
 }
