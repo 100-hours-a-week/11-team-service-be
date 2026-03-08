@@ -36,8 +36,8 @@ VALUES (1, 1, 1, 1, 'MANUAL', 'https://test.com/job/1', SHA2('https://test.com/j
 -- ⑥ 지원 이력
 INSERT INTO job_applications (job_application_id, user_id, job_master_id, status, created_at, updated_at)
 VALUES
-    (1, 1, 1, 'APPLIED', NOW(), NOW()),
-    (2, 2, 1, 'APPLIED', NOW(), NOW());
+    (1, 1, 1, 'SUBMITTED', NOW(), NOW()),
+    (2, 2, 1, 'SUBMITTED', NOW(), NOW());
 
 -- ⑦ AI 평가 결과 (cutline_score 통과용)
 INSERT INTO ai_applicant_evaluation (evaluation_id, job_application_id, overall_score,
@@ -49,7 +49,7 @@ VALUES
 -- ⑧ 채팅방 생성
 INSERT INTO chat_rooms (chat_room_id, job_master_id, created_by, room_name, max_participants,
                         room_goal, cutline_score, preferred_conditions, status, created_at, updated_at)
-VALUES (1, 1, 1, '백엔드 스터디방', 10, 'INTERVIEW', 80, NULL, 'OPEN', NOW(), NOW());
+VALUES (1, 1, 1, '백엔드 스터디방', 10, 'INTERVIEW', 80, NULL, 'ACTIVE', NOW(), NOW());
 
 -- ⑨ 채팅방 멤버
 INSERT INTO chat_room_members (chat_room_member_id, chat_room_id, user_id, job_application_id, role, joined_at)
