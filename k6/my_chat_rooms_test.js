@@ -1,6 +1,6 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { htmlReport } from 'https://raw.githubusercontent.com/benc-uk/k6-reporter/main/dist/bundle.js';
+import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
 
 // 4N+1 개선 전/후 성능 측정
 // 대상 API: GET /api/v1/users/me/chat-rooms?size=20
@@ -39,5 +39,6 @@ export default function () {
 export function handleSummary(data) {
     return {
         'k6/my_chat_rooms_result.json': JSON.stringify(data, null, 2),
+        stdout: textSummary(data, { indent: ' ', enableColors: true }),
     };
 }
