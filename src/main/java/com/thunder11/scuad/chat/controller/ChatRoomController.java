@@ -171,10 +171,13 @@ public class ChatRoomController {
         );
     }
 
-    // 메시지 전송 (multipart/form-data 지원)
-    // 수정 이유: FILE 타입 메시지 전송 시 파일을 S3에 업로드하고 fileId를 생성하여
-    //           MessageSendRequest에 포함시켜야 서비스에서 정상 처리 가능
-    @PostMapping(value = "/chat-rooms/{chatRoomId}/messages", consumes = {"multipart/form-data"})
+    // 메시지 전송 (multipart/form-data 및 application/x-www-form-urlencoded 모두 지원)
+    // consumes 제약 제거 근거:
+    //   - @RequestParam은 multipart와 urlencoded 둘 다 바인딩 가능
+    //   - FILE 타입일 때만 MultipartFile이 필요하고, TEXT 타입은 파일 없이도 동작
+    //   - consumes 제약을 두면 k6/Postman 등 테스트 도구에서 urlencoded 전송 시 415 에러 발생
+    //   - file 파라미터가 null이면 TEXT로 간주하는 로직이 이미 아래에 있으므로 안전
+    @PostMapping(value = "/chat-rooms/{chatRoomId}/messages")
     public ApiResponse<ChatMessageResponse> sendMessage(
             @PathVariable Long chatRoomId,
             @RequestParam("messageType") String messageType,
