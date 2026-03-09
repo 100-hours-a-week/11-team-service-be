@@ -186,7 +186,17 @@ public class ChatRoomController {
                 chatRoomId, messageType, content, (file != null), userPrincipal.getUserId());
 
         // MessageType 변환
-        MessageType msgType = MessageType.valueOf(messageType.toUpperCase());
+        // 잘못된 값(예: "TEXT" 아닌 임의 문자열) 입력 시 valueOf()가 IllegalArgumentException을 던져
+        // GlobalExceptionHandler가 처리하지 못하면 500이 반환되므로 명시적으로 400 처리
+        MessageType msgType;
+        try {
+            msgType = MessageType.valueOf(messageType.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("유효하지 않은 messageType 입력: {}", messageType);
+            throw new com.thunder11.scuad.common.exception.ApiException(
+                    com.thunder11.scuad.common.exception.ErrorCode.INVALID_INPUT_VALUE
+            );
+        }
         
         Long fileId = null;
         
