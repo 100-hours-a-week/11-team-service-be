@@ -228,6 +228,11 @@ public class ChatRoomController {
                 request
         );
 
+        // 트랜잭션 커밋 완료 후 브로드캐스트
+        // sendMessage() 리턴 = 트랜잭션 커밋 완료 시점
+        // 이 시점 이후에 broadcast해야 수신 클라이언트의 GET /messages에서 메시지 누락 없음
+        chatMessageService.broadcast(chatRoomId, response);
+
         return ApiResponse.of(
                 HttpStatus.CREATED.value(),
                 "MESSAGE_SENT",

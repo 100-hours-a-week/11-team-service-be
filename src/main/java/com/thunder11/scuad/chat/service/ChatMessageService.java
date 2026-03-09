@@ -290,12 +290,21 @@ public class ChatMessageService {
 
         ChatMessageResponse result = convertToResponse(savedMessage, nicknameMap, fileInfoMap);
 
-        // WebSocket 브로드캐스트
-        // 해당 채팅방을 구독 중인 모든 클라이언트에게 새 메시지를 즉시 push
-        // 클라이언트는 /topic/chat-rooms/{chatRoomId} 를 구독하고 있어야 수신 가능
-        messagingTemplate.convertAndSend("/topic/chat-rooms/" + chatRoomId, result);
-        log.info("WebSocket 브로드캐스트 완료: chatRoomId={}, messageId={}", chatRoomId, savedMessage.getMessageId());
-
         return result;
+    }
+
+    // WebSocket 브로드캐스트 — @Transactional 밖에서 호출해야 함
+    //
+    // 분리 근거:
+    //   sendMessage()는 @Transactional 메서드이므로, 메서드 내부에서 convertAndSend()를 호출하면
+    //   트랜잭션 커밋 전에 브로드캐스트가 발생한다.
+    //   이 경우 메시지를 받은 클라이언트가 즉시 GET /messages를 호출하면
+    //   아직 커밋되지 않은 데이터를 조회하여 메시지가 누락되는 레이스 컨디션이 발생한다.
+    //
+    // 호출 위치: ChatRoomController.sendMessage() — sendMessage() 리턴 후 즉시 호출
+    //   sendMessage() 리턴 시점 = 트랜잭션 커밋 완료 시점이므로 레이스 컨디션 해소
+    public void broadcast(Long chatRoomId, ChatMessageResponse result) {
+        messagingTemplate.convertAndSend("/topic/chat-rooms/" + chatRoomId, result);
+        log.info("WebSocket 브로드캐스트 완료: chatRoomId={}, messageId={}", chatRoomId, result.getMessageId());
     }
 }
