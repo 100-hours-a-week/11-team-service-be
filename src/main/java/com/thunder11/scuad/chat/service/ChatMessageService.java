@@ -13,6 +13,7 @@ import com.thunder11.scuad.file.repository.FileObjectRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +42,7 @@ public class ChatMessageService {
     private final UserRepository userRepository;
     private final FileObjectRepository fileObjectRepository;
     private final S3FileManagementService s3FileManagementService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     private record FileInfo(Long fileId, String fileName, String contentType, Long fileSize) {
     }
@@ -92,16 +94,16 @@ public class ChatMessageService {
                 .build();
     }
 
-    // 채팅 메시지 목록 조회 (커서 기반 페이징 + 폴링)
+    // 채팅 메시지 목록 조회 (커서 기반 페이징) — 입장 시 과거 메시지 로드 전용
+    // 신규 메시지 수신은 WebSocket 구독(/topic/chat-rooms/{id})으로 처리
     public ChatMessageListResponse getMessages(
             Long chatRoomId,
             Long userId,
             Long cursor,
-            Long since,
             int size
     ) {
-        log.info("메시지 목록 조회 시작: chatRoomId={}, userId={}, cursor={}, since={}, size={}",
-                chatRoomId, userId, cursor, since, size);
+        log.info("메시지 목록 조회 시작: chatRoomId={}, userId={}, cursor={}, size={}",
+                chatRoomId, userId, cursor, size);
 
         // 1. 채팅방 존재 확인
         chatRoomRepository.findByIdNotDeleted(chatRoomId)
@@ -117,47 +119,29 @@ public class ChatMessageService {
             throw new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
         }
 
-        // 3. since와 cursor 동시 사용 검증
-        if (since != null && cursor != null) {
-            log.warn("since와 cursor를 동시에 사용할 수 없습니다: chatRoomId={}, userId={}", chatRoomId, userId);
-            throw new ApiException(ErrorCode.INVALID_INPUT_VALUE);
+
+        // WebSocket 전환으로 since 기반 폴링 제거
+        // 신규 메시지 수신은 WebSocket 구독(/topic/chat-rooms/{id})으로 처리
+        // 이 API는 채팅방 입장 시 과거 메시지 로드(커서 페이징) 용도로만 사용
+        List<ChatMessage> messages = chatMessageRepository.findMessagesByChatRoomIdWithCursor(
+                chatRoomId,
+                cursor,
+                PageRequest.of(0, size + 1)
+        );
+        log.info("과거 메시지 조회 완료: {}개", messages.size());
+
+        // 페이징 정보 계산
+        boolean hasNext = messages.size() > size;
+        if (hasNext) {
+            messages = messages.subList(0, size);
         }
 
-        List<ChatMessage> messages;
-        boolean isPolling = (since != null);
-
-        // 4. 폴링 요청인지 과거 메시지 로드인지 구분
-        if (isPolling) {
-            // 폴링: since 이후의 최신 메시지 조회
-            messages = chatMessageRepository.findNewMessagesSince(chatRoomId, since);
-            log.info("폴링 메시지 조회 완료: {}개", messages.size());
-        } else {
-            // 과거 메시지 로드: 커서 기반 페이징
-            messages = chatMessageRepository.findMessagesByChatRoomIdWithCursor(
-                    chatRoomId,
-                    cursor,
-                    PageRequest.of(0, size + 1)
-            );
-            log.info("과거 메시지 조회 완료: {}개", messages.size());
+        Long nextCursor = null;
+        if (hasNext && !messages.isEmpty()) {
+            nextCursor = messages.get(messages.size() - 1).getMessageId();
         }
 
-        // 5. 페이징 정보 계산 (폴링이 아닐 때만)
-        PaginationResponse pagination = null;
-
-        if (!isPolling) {
-            boolean hasNext = messages.size() > size;
-            if (hasNext) {
-                messages = messages.subList(0, size);
-            }
-
-            Long nextCursor = null;
-            if (hasNext && !messages.isEmpty()) {
-                nextCursor = messages.get(messages.size() - 1).getMessageId();
-            }
-
-            pagination = PaginationResponse.of(nextCursor, hasNext, messages.size());
-        }
-
+        PaginationResponse pagination = PaginationResponse.of(nextCursor, hasNext, messages.size());
         // 6. 발신자 닉네임 일괄 조회 (N+1 문제 해결)
         List<Long> senderIds = messages.stream()
                 .map(ChatMessage::getSenderId)
@@ -204,7 +188,7 @@ public class ChatMessageService {
                 .map(message -> convertToResponse(message, finalNicknameMap, finalFileInfoMap))
                 .collect(Collectors.toList());
 
-        log.info("메시지 목록 조회 완료: 총 {}개, 폴링={}", messageResponses.size(), isPolling);
+        log.info("메시지 목록 조회 완료: 총 {}개", messageResponses.size());
 
         return ChatMessageListResponse.of(messageResponses, pagination);
     }
@@ -304,6 +288,23 @@ public class ChatMessageService {
             }
         }
 
-        return convertToResponse(savedMessage, nicknameMap, fileInfoMap);
+        ChatMessageResponse result = convertToResponse(savedMessage, nicknameMap, fileInfoMap);
+
+        return result;
+    }
+
+    // WebSocket 브로드캐스트 — @Transactional 밖에서 호출해야 함
+    //
+    // 분리 근거:
+    //   sendMessage()는 @Transactional 메서드이므로, 메서드 내부에서 convertAndSend()를 호출하면
+    //   트랜잭션 커밋 전에 브로드캐스트가 발생한다.
+    //   이 경우 메시지를 받은 클라이언트가 즉시 GET /messages를 호출하면
+    //   아직 커밋되지 않은 데이터를 조회하여 메시지가 누락되는 레이스 컨디션이 발생한다.
+    //
+    // 호출 위치: ChatRoomController.sendMessage() — sendMessage() 리턴 후 즉시 호출
+    //   sendMessage() 리턴 시점 = 트랜잭션 커밋 완료 시점이므로 레이스 컨디션 해소
+    public void broadcast(Long chatRoomId, ChatMessageResponse result) {
+        messagingTemplate.convertAndSend("/topic/chat-rooms/" + chatRoomId, result);
+        log.info("WebSocket 브로드캐스트 완료: chatRoomId={}, messageId={}", chatRoomId, result.getMessageId());
     }
 }

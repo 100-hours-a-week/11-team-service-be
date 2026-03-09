@@ -149,18 +149,17 @@ public class ChatRoomController {
     public ApiResponse<ChatMessageListResponse> getMessages(
             @PathVariable Long chatRoomId,
             @RequestParam(required = false) Long cursor,
-            @RequestParam(required = false) Long since,
             @RequestParam(defaultValue = "50") int size,
             @AuthenticationPrincipal UserPrincipal userPrincipal
     ) {
-        log.info("GET /api/v1/chat-rooms/{}/messages - cursor={}, since={}, size={}, userId={}",
-                chatRoomId, cursor, since, size, userPrincipal.getUserId());
+        // WebSocket 전환으로 since 파라미터 제거 — 신규 메시지는 WebSocket으로 수신
+        log.info("GET /api/v1/chat-rooms/{}/messages - cursor={}, size={}, userId={}",
+                chatRoomId, cursor, size, userPrincipal.getUserId());
 
         ChatMessageListResponse response = chatMessageService.getMessages(
                 chatRoomId,
                 userPrincipal.getUserId(),
                 cursor,
-                since,
                 size
         );
 
@@ -187,7 +186,17 @@ public class ChatRoomController {
                 chatRoomId, messageType, content, (file != null), userPrincipal.getUserId());
 
         // MessageType 변환
-        MessageType msgType = MessageType.valueOf(messageType.toUpperCase());
+        // 잘못된 값(예: "TEXT" 아닌 임의 문자열) 입력 시 valueOf()가 IllegalArgumentException을 던져
+        // GlobalExceptionHandler가 처리하지 못하면 500이 반환되므로 명시적으로 400 처리
+        MessageType msgType;
+        try {
+            msgType = MessageType.valueOf(messageType.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("유효하지 않은 messageType 입력: {}", messageType);
+            throw new com.thunder11.scuad.common.exception.ApiException(
+                    com.thunder11.scuad.common.exception.ErrorCode.INVALID_INPUT_VALUE
+            );
+        }
         
         Long fileId = null;
         
@@ -228,6 +237,11 @@ public class ChatRoomController {
                 userPrincipal.getUserId(),
                 request
         );
+
+        // 트랜잭션 커밋 완료 후 브로드캐스트
+        // sendMessage() 리턴 = 트랜잭션 커밋 완료 시점
+        // 이 시점 이후에 broadcast해야 수신 클라이언트의 GET /messages에서 메시지 누락 없음
+        chatMessageService.broadcast(chatRoomId, response);
 
         return ApiResponse.of(
                 HttpStatus.CREATED.value(),
