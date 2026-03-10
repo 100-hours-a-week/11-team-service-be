@@ -56,6 +56,13 @@ public class User extends BaseTimeEntity {
         this.nickname = nickname;
     }
 
+    // 프로필 이미지 파일 ID 변경
+    // null 허용: 이미지 제거 시 null 전달
+    // 파일 존재 여부 검증은 서비스 레이어에서 수행
+    public void updateProfileImageFileId(Long profileImageFileId) {
+        this.profileImageFileId = profileImageFileId;
+    }
+
     // 회원 탈퇴 처리 (상태 변경 및 탈퇴 시각 기록)
     public void withdraw() {
         this.status = UserStatus.WITHDRAWN;
