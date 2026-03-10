@@ -1,5 +1,6 @@
 package com.thunder11.scuad.user.controller;
 
+import com.thunder11.scuad.user.dto.request.UserWithdrawalRequest;
 import com.thunder11.scuad.user.dto.request.UserUpdateRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -59,6 +60,25 @@ public class UserController {
                         "USER_002",
                         "사용자 정보를 성공적으로 수정했습니다.",
                         userResponse
+                )
+        );
+    }
+
+    // 회원 탈퇴
+    // DELETE /api/v1/users/me
+    // 탈퇴 완료 후 클라이언트는 로컬 토큰을 삭제하고 로그인 화면으로 이동해야 합니다
+    @DeleteMapping("/me")
+    public ResponseEntity<ApiResponse<Void>> withdrawCurrentUser(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @Valid @RequestBody UserWithdrawalRequest request
+    ) {
+        userService.withdrawUser(userPrincipal.getUserId(), request);
+
+        return ResponseEntity.ok(
+                ApiResponse.of(
+                        200,
+                        "USER_003",
+                        "회원 탈퇴가 완료되었습니다."
                 )
         );
     }

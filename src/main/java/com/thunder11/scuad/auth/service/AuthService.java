@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import com.thunder11.scuad.auth.domain.*;
+import com.thunder11.scuad.auth.domain.UserStatus;
 import com.thunder11.scuad.auth.dto.TokenRefreshResponse;
 import com.thunder11.scuad.common.exception.ApiException;
 import com.thunder11.scuad.common.exception.ErrorCode;
@@ -86,6 +87,15 @@ public class AuthService {
                 .orElseGet(() -> registerNewUser(userInfo));
 
         User user = oAuthAccount.getUser();
+
+        // 탈퇴 사용자 로그인 차단
+        // Soft Delete 특성상 user_oauth_accounts 레코드는 남아있어 계정 조회가 되지만
+        // WITHDRAWN 상태 확인 후 JWT 발급 전에 차단해야 재로그인을 막을 수 있음
+        if (user.getStatus() == UserStatus.WITHDRAWN) {
+            log.warn("탈퇴한 사용자 로그인 시도 차단: userId={}", user.getUserId());
+            throw new ApiException(ErrorCode.WITHDRAWN_USER);
+        }
+
         log.info("사용자 인증 완료: userId={}, nickname={}", user.getUserId(), user.getNickname());
 
         // 4. JWT 토큰 발급

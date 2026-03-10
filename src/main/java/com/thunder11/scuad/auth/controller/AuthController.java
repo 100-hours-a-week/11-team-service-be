@@ -15,6 +15,7 @@ import com.thunder11.scuad.auth.dto.LoginResponse;
 import com.thunder11.scuad.auth.service.AuthService;
 import com.thunder11.scuad.auth.dto.RefreshTokenRequest;
 import com.thunder11.scuad.auth.dto.TokenRefreshResponse;
+import com.thunder11.scuad.common.exception.ApiException;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -60,33 +61,47 @@ public class AuthController {
     ) {
         log.info("카카오 콜백 처리 시작: code={}", code.substring(0, 10) + "...");
 
-        // 인가 코드로 로그인 처리 및 JWT 발급
-        LoginResponse loginResponse = authService.processKakaoCallback(code);
+        try {
+            // 인가 코드로 로그인 처리 및 JWT 발급
+            LoginResponse loginResponse = authService.processKakaoCallback(code);
 
-        // Refresh Token을 HttpOnly 쿠키로 설정
-        ResponseCookie refreshTokenCookie = ResponseCookie.from("refreshToken", loginResponse.getRefreshToken())
-                .httpOnly(true)                    // JavaScript 접근 차단 (XSS 방어)
-                .secure(true)                      // HTTPS에서만 전송 (중간자 공격 방어)
-                .path("/api/v1/auth")              // 토큰 재발급 API에만 쿠키 전송
-                .maxAge(14 * 24 * 60 * 60)         // 14일 (초 단위)
-                .sameSite("Lax")                   // CSRF 기본 방어
-                .domain(cookieDomain)
-                .build();
+            // Refresh Token을 HttpOnly 쿠키로 설정
+            ResponseCookie refreshTokenCookie = ResponseCookie.from("refreshToken", loginResponse.getRefreshToken())
+                    .httpOnly(true)                    // JavaScript 접근 차단 (XSS 방어)
+                    .secure(true)                      // HTTPS에서만 전송 (중간자 공격 방어)
+                    .path("/api/v1/auth")              // 토큰 재발급 API에만 쿠키 전송
+                    .maxAge(14 * 24 * 60 * 60)         // 14일 (초 단위)
+                    .sameSite("Lax")                   // CSRF 기본 방어
+                    .domain(cookieDomain)
+                    .build();
 
-        response.addHeader("Set-Cookie", refreshTokenCookie.toString());
-        log.info("Refresh Token을 HttpOnly 쿠키로 설정 완료");
+            response.addHeader("Set-Cookie", refreshTokenCookie.toString());
+            log.info("Refresh Token을 HttpOnly 쿠키로 설정 완료");
 
-        // 프론트엔드로 리다이렉트 (JWT 토큰 전달)
-        // TODO: 프론트엔드 URL은 환경변수로 관리 필요
-        String frontendUrl = UriComponentsBuilder
-                .fromUriString(frontendUrlBase + "/auth/callback") // 프론트엔드 콜백 URL
-                .queryParam("accessToken", loginResponse.getAccessToken())
-                .queryParam("expiresIn", loginResponse.getExpiresIn())
-                .build()
-                .toUriString();
+            // 프론트엔드로 리다이렉트 (JWT 토큰 전달)
+            String frontendUrl = UriComponentsBuilder
+                    .fromUriString(frontendUrlBase + "/auth/callback")
+                    .queryParam("accessToken", loginResponse.getAccessToken())
+                    .queryParam("expiresIn", loginResponse.getExpiresIn())
+                    .build()
+                    .toUriString();
 
-        log.info("로그인 성공, 프론트엔드로 리다이렉트");
-        return new RedirectView(frontendUrl);
+            log.info("로그인 성공, 프론트엔드로 리다이렉트");
+            return new RedirectView(frontendUrl);
+
+        } catch (ApiException e) {
+            // 탈퇴 사용자 등 도메인 예외 발생 시 에러 파라미터와 함께 프론트로 리다이렉트
+            // 프론트는 error 파라미터를 확인하여 적절한 안내 메시지를 표시
+            log.warn("카카오 콜백 처리 중 도메인 예외 발생: code={}", e.getErrorCode().getCode());
+
+            String errorRedirectUrl = UriComponentsBuilder
+                    .fromUriString(frontendUrlBase + "/auth/callback")
+                    .queryParam("error", e.getErrorCode().getCode())
+                    .build()
+                    .toUriString();
+
+            return new RedirectView(errorRedirectUrl);
+        }
     }
 
     // Access Token 재발급
