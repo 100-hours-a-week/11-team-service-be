@@ -63,8 +63,20 @@ public class User extends BaseTimeEntity {
         this.profileImageFileId = profileImageFileId;
     }
 
-    // 회원 탈퇴 처리 (상태 변경 및 탈퇴 시각 기록)
-    public void withdraw() {
+    // 탈퇴 처리: 상태 변경 + deleted_at 설정 + 닉네임 패턴 변경
+    // 닉네임을 deleted_{userId}_{원본닉네임} 패턴으로 변경하여 UNIQUE 제약을 해제
+    // 이렇게 해야 동일 카카오 계정으로 재가입 시 같은 닉네임 사용이 가능
+    // VARCHAR(30) 제한 초과 시 원본 닉네임을 truncate 처리
+    public void applyWithdrawalNicknamePattern() {
+        String prefix = "deleted_" + this.userId + "_";
+        int maxLength = 30;
+        int remainingLength = maxLength - prefix.length();
+
+        String truncatedOriginal = this.nickname.length() > remainingLength
+                ? this.nickname.substring(0, Math.max(remainingLength, 0))
+                : this.nickname;
+
+        this.nickname = prefix + truncatedOriginal;
         this.status = UserStatus.WITHDRAWN;
         this.deletedAt = LocalDateTime.now();
     }
