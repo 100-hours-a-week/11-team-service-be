@@ -16,6 +16,10 @@ import com.thunder11.scuad.user.dto.UserResponse;
 import org.springframework.dao.DataIntegrityViolationException;
 import com.thunder11.scuad.file.repository.FileObjectRepository;
 import com.thunder11.scuad.user.dto.request.UserUpdateRequest;
+import com.thunder11.scuad.auth.repository.AuthRefreshTokenRepository;
+import com.thunder11.scuad.user.domain.UserWithdrawal;
+import com.thunder11.scuad.user.dto.request.UserWithdrawalRequest;
+import com.thunder11.scuad.user.repository.UserWithdrawalRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -30,6 +34,8 @@ public class UserService {
     private final UserOAuthAccountRepository userOAuthAccountRepository;
     private final S3FileManagementService s3FileManagementService;
     private final FileObjectRepository fileObjectRepository;
+    private final UserWithdrawalRepository userWithdrawalRepository;
+    private final AuthRefreshTokenRepository authRefreshTokenRepository;
     // presigned URL 유효 시간: 클라이언트 세션 내 이미지 표시에 충분한 시간으로 설정
     private static final Duration PROFILE_IMAGE_URL_EXPIRATION = Duration.ofMinutes(10);
 
@@ -118,5 +124,38 @@ public class UserService {
         } catch (ApiException e) {
             return null;
         }
+    }
+
+    // 회원 탈퇴 처리 (Soft Delete)
+    // 처리 순서: 탈퇴 사유 저장 → 닉네임 변경 + 상태 변경 → 토큰 철회
+    // 모든 처리는 단일 트랜잭션으로 수행하여 부분 실패를 방지
+    @Transactional
+    public void withdrawUser(Long userId, UserWithdrawalRequest request) {
+        // 1. 사용자 조회
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+
+        // 2. 이미 탈퇴한 사용자 차단
+        if (user.getStatus() == UserStatus.WITHDRAWN) {
+            throw new ApiException(ErrorCode.USER_ALREADY_WITHDRAWN);
+        }
+
+        // 3. 탈퇴 사유 저장
+        // user_id UNIQUE 제약이 DB에서 중복 삽입을 구조적으로 방지
+        UserWithdrawal withdrawal = UserWithdrawal.builder()
+                .user(user)
+                .reason(request.getReason())
+                .build();
+        userWithdrawalRepository.save(withdrawal);
+
+        // 4. 닉네임 변경 + 상태 WITHDRAWN + deleted_at 설정
+        // deleted_{userId}_{원본닉네임} 패턴으로 변경하여 UNIQUE 제약 해제
+        // 재가입 시 동일 닉네임 사용 가능하도록 처리
+        user.applyWithdrawalNicknamePattern();
+
+        // 5. 모든 유효한 Refresh Token 철회
+        // 탈퇴 후 기존 토큰으로 재인증을 원천 차단
+        authRefreshTokenRepository.findByUser_UserIdAndRevokedAtIsNull(userId)
+                .forEach(token -> token.revoke());
     }
 }
