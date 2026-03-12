@@ -1,8 +1,9 @@
+name: scuad-backend
 services:
   ## MYSQL
   mysql:
     image: mysql:8.0
-    container_name: mysql
+    container_name: scuad-mysql
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-password}
@@ -11,18 +12,22 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD:-password}
     ports:
       - "${DB_PORT:-3306}:3306"
+    networks:
+      - scuad-network
 
   ## RabbitMQ
   rabbitmq:
     image: rabbitmq:3-management
     restart: always
-    container_name: rabbitmq
+    container_name: scuad-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     ports:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "15672:15672"
+    networks:
+      - scuad-network
 
   ## Backend
   backend:
@@ -43,8 +48,8 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       JAVA_OPTS: ${JAVA_OPTS:-}
       TZ: Asia/Seoul
-      DB_HOST: mysql
-      RABBITMQ_HOST: rabbitmq
+      DB_HOST: scuad-mysql
+      RABBITMQ_HOST: scuad-rabbitmq
     restart: unless-stopped
 
     healthcheck:
@@ -66,3 +71,10 @@ services:
         tag: "{{.Name}}"
 
     stop_grace_period: 30s
+
+    networks: 
+      - scuad-network
+
+networks:
+  scuad-network:
+    external: true
