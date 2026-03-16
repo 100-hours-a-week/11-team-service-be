@@ -87,6 +87,10 @@ public class SecurityConfig {
 
                         // 카카오 OAuth 관련 URL은 모두 퍼블릭 허용
                         .requestMatchers("/api/v1/auth/kakao/**").permitAll()
+                        // 토큰 재발급은 accessToken이 만료된 상태에서 호출되므로 인증 없이 허용
+                        // JwtAuthenticationFilter가 먼저 실행되어 만료된 accessToken을 거부하면
+                        // refresh 엔드포인트까지 도달하지 못해 401이 반환되는 문제를 방지
+                        .requestMatchers("/api/v1/auth/refresh").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-postings").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-postings/{jobMasterId}").permitAll()
                         // 헬스 체크는 퍼블릭 허용
