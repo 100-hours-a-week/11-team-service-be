@@ -98,6 +98,7 @@ public class AiResultProcessingService {
     }
 
     private void saveComparisonResult(JobApplication myApplication,
+                                       JobApplication competitorApplication,
                                        AiCompareResponse result) {
         List<ComparisonMetric> metrics = result.getComparisonMetrics().stream()
                 .map(m -> new ComparisonMetric(m.getName(), m.getMyScore(), m.getCompetitorScore()))
