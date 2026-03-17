@@ -125,18 +125,17 @@ public class AiServiceClient {
         log.info("AI 지원자 비교 요청: userId={}, competitor={}, jobPostingId={}",
                 request.getUserId(), request.getCompetitor(), request.getJobPostingId());
 
-        try {
-            AiApiResponse<AiCompareResponse> response = webClient.post()
-                    .uri(aiServiceUrl + "/ai/api/v1/applicant/compare")
-                    .bodyValue(request)
-                    .retrieve()
-                    .bodyToMono(new ParameterizedTypeReference<AiApiResponse<AiCompareResponse>>() {})
-                    .block();
+        // ============================================================
+        // [테스트 전용] 동기 블로킹 스레드 점유 재현 — 테스트 후 반드시 제거
+        //
+        // 의도: 실제 AI 서버가 없는 환경에서도 수 초 소요되는 AI 응답 대기 상황을
+        //       정확히 재현하기 위해 3초 sleep 후 더미 응답을 반환.
+        //       핵심은 AI 호출 성공 여부가 아니라 "스레드가 3초 동안 점유되는 현상"이므로
+        //       더미 응답으로 대체해도 테스트 목적(스레드 풀 소진 측정)에 완전히 부합함.
+        // ============================================================
+        try { Thread.sleep(3000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 
-            validateAiResponse(response);
-            return response.getData();
-        } catch (Exception e) {
-            throw new ApiException(ErrorCode.AI_SERVICE_ERROR, "AI 비교 분석 호출 실패: " + e.getMessage());
-        }
+        log.info("[테스트 전용] AI 더미 응답 반환 - userId={}", request.getUserId());
+        return AiCompareResponse.dummy();
     }
 }
