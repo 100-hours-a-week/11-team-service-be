@@ -24,6 +24,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     // 보안 취약점이 있어 수정
     @Value("${app.frontend-url}")
     private String frontendUrl;
+
+    // frontendUrl trailing slash 제거
+    // 환경변수에 https://dev.scuad.kr/ 처럼 끝에 / 가 붙어 있으면
+    // 브라우저 Origin 헤더(https://dev.scuad.kr)와 불일치하여 SockJS 요청이 405로 막힘
+    private String getNormalizedFrontendUrl() {
+        return frontendUrl.endsWith("/") ? frontendUrl.substring(0, frontendUrl.length() - 1) : frontendUrl;
+    }
     // 메시지 브로커 설정
     // enableSimpleBroker("/topic"): /topic/chat-rooms/{id} 를 구독한 클라이언트들에게 메시지 브로드캐스트
     // setApplicationDestinationPrefixes("/app"): 클라이언트가 서버로 메시지 보낼 때 사용하는 prefix
@@ -42,7 +49,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
                 .addInterceptors(webSocketAuthInterceptor)  // 핸드셰이크 시 JWT 검증
-                .setAllowedOriginPatterns(frontendUrl)      // SecurityConfig CORS와 동일하게 제한
+                .setAllowedOriginPatterns(getNormalizedFrontendUrl())      // SecurityConfig CORS와 동일하게 제한
                 .withSockJS();
     }
 }
