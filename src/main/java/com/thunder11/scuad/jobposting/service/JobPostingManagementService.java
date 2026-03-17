@@ -8,6 +8,8 @@ import jakarta.persistence.EntityManager;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 
 import lombok.RequiredArgsConstructor;
 
@@ -26,6 +28,7 @@ import com.thunder11.scuad.jobposting.dto.response.JobPostingListResponse;
 import com.thunder11.scuad.jobposting.repository.JobMasterSkillRepository;
 import com.thunder11.scuad.chat.repository.ChatRoomRepository;
 import com.thunder11.scuad.common.util.CursorTokenUtil;
+import com.thunder11.scuad.jobposting.dto.response.JobPostingSliceResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -41,7 +44,8 @@ public class JobPostingManagementService {
     private final CursorTokenUtil cursorTokenUtil;
 
     @Transactional(readOnly = true)
-    public Map<String, Object> getJobPostings(JobPostingSearchCondition condition) {
+    @Cacheable(value = "jobPostings", key = "#condition.toString() + '_' + #condition.getSize()", cacheManager = "cacheManager")
+    public JobPostingSliceResponse getJobPostings(JobPostingSearchCondition condition) {
         CursorTokenUtil.CursorData cursorData = null;
         if (condition.getCursor() != null && !condition.getCursor().isBlank() && !"-1".equals(condition.getCursor())) {
             cursorData = cursorTokenUtil.decodeToken(condition.getCursor());
@@ -69,10 +73,7 @@ public class JobPostingManagementService {
 
         boolean isLast = items.size() < condition.getSize();
 
-        return Map.of(
-                "items", items,
-                "next_cursor", nextCursorToken,
-                "last", isLast);
+        return JobPostingSliceResponse.of(items, nextCursorToken, isLast);
     }
 
     @Transactional(readOnly = true)
@@ -84,6 +85,7 @@ public class JobPostingManagementService {
     }
 
     @Transactional
+    @CacheEvict(value = "jobPostings", allEntries = true)
     public JobPostingConfirmResponse confirmJobPosting(Long jobMasterId, Long userId, RegistrationStatus status) {
         JobMaster jobMaster = jobMasterRepository.findById(jobMasterId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고를 찾을 수 없습니다."));
