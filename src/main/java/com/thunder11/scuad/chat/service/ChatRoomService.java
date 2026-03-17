@@ -1,5 +1,6 @@
 package com.thunder11.scuad.chat.service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import com.thunder11.scuad.jobposting.domain.type.ApplicationDocumentType;
 import com.thunder11.scuad.jobposting.repository.AiApplicationEvaluationRepository;
 import com.thunder11.scuad.jobposting.repository.ApplicationDocumentRepository;
 import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
+import com.thunder11.scuad.file.service.S3FileManagementService;
 import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -52,6 +54,7 @@ public class ChatRoomService {
     private final ApplicationDocumentRepository applicationDocumentRepository;
     private final UserRepository userRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final S3FileManagementService s3FileManagementService;
 
     // 사용자의 AI 평가 점수 조회 (private 헬퍼 메서드)
     private Integer getMyScore(Long userId, Long jobMasterId) {
@@ -692,24 +695,45 @@ public class ChatRoomService {
         // 3. 활성 멤버 목록 조회 (HOST 우선, 입장 시간 오름차순)
         List<ChatRoomMember> members = chatRoomMemberRepository.findAllActiveMembersByChatRoomId(chatRoomId);
 
-        // 4. 닉네임 일괄 조회 후 DTO 변환
-        // 개선: stream 내 findNicknameByUserId() N번 → userId 목록 기반 IN 쿼리 1번으로 대체
-        //       findNicknamesByUserIds는 8N+1 작업 시 추가된 메서드 재사용
+        // 4. 닉네임 + profileImageFileId 일괄 조회 후 DTO 변환
+        // 개선: 기존 닉네임만 조회하던 방식에서 profileImageFileId 포함 조회로 변경
+        //       유저 프로필 이미지 변경 시 채팅방 멤버 목록에 반영되지 않던 문제 해결
         List<Long> userIds = members.stream()
                 .map(ChatRoomMember::getUserId)
                 .collect(Collectors.toList());
 
-        Map<Long, String> nicknameMap = userRepository.findNicknamesByUserIds(userIds)
-                .stream()
-                .collect(Collectors.toMap(
-                        row -> (Long) row[0],
-                        row -> (String) row[1]
-                ));
+        // userId → [nickname, profileImageFileId] 맵 구성 (IN 쿼리 1번)
+        Map<Long, String> nicknameMap = new java.util.HashMap<>();
+        Map<Long, Long> profileImageFileIdMap = new java.util.HashMap<>();
+
+        userRepository.findNicknameAndProfileImageByUserIds(userIds)
+                .forEach(row -> {
+                    Long uid = (Long) row[0];
+                    nicknameMap.put(uid, (String) row[1]);
+                    profileImageFileIdMap.put(uid, (Long) row[2]);
+                });
+
+        // presigned URL 생성 (profileImageFileId가 있는 경우에만)
+        // 만료 시간 10분: 멤버 목록은 자주 갱신되므로 짧게 설정
+        Duration profileUrlExpiration = Duration.ofMinutes(10);
+        Map<Long, String> profileImageUrlMap = new java.util.HashMap<>();
+        profileImageFileIdMap.forEach((uid, fileId) -> {
+            if (fileId != null) {
+                try {
+                    String url = s3FileManagementService.generatePresignedUrl(fileId, profileUrlExpiration);
+                    profileImageUrlMap.put(uid, url);
+                } catch (Exception e) {
+                    // 파일이 삭제되었거나 S3 오류 시 해당 유저의 이미지는 null로 처리
+                    log.warn("프로필 이미지 URL 생성 실패: userId={}, fileId={}", uid, fileId);
+                }
+            }
+        });
 
         List<ChatRoomMemberResponse> memberResponses = members.stream()
                 .map(member -> {
                     String nickname = nicknameMap.getOrDefault(member.getUserId(), "알 수 없음");
-                    return ChatRoomMemberResponse.of(member, nickname);
+                    String profileImageUrl = profileImageUrlMap.get(member.getUserId());
+                    return ChatRoomMemberResponse.of(member, nickname, profileImageUrl);
                 })
                 .collect(Collectors.toList());
 
