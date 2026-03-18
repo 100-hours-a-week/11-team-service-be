@@ -1,0 +1,89 @@
+spring:
+  # ---------------------------------------------------------------
+  # H2 인메모리 DB - 실제 MySQL 연결 없이 테스트
+  # MODE=MySQL: MySQL 방언 호환 (AUTO_INCREMENT, UNIQUE 제약 등 동작 동일)
+  # ---------------------------------------------------------------
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      # create-drop: 테스트 시작 시 스키마 생성, 종료 시 삭제 (엔티티 기반 자동 생성)
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        # H2 방언 명시 - Spring Boot가 자동 감지하지만 명시적으로 지정
+        dialect: org.hibernate.dialect.H2Dialect
+
+  # Flyway 비활성화: ddl-auto: create-drop이 스키마를 관리하므로 Flyway 불필요
+  flyway:
+    enabled: false
+
+  # ---------------------------------------------------------------
+  # Redis - pubsub 비활성화 (RedisPubSubConfig의 @ConditionalOnProperty 조건)
+  # RedisConnectionFactory는 TestInfraConfig에서 Mock으로 주입
+  # ---------------------------------------------------------------
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      pubsub:
+        enabled: false   # RedisPubSubConfig 빈 등록 자체를 비활성화
+
+  # ---------------------------------------------------------------
+  # RabbitMQ - 자동 구성 비활성화
+  # ConnectionFactory는 TestInfraConfig에서 Mock으로 주입
+  # ---------------------------------------------------------------
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+  # ---------------------------------------------------------------
+  # AWS S3 - 더미 자격증명
+  # S3Client는 TestInfraConfig에서 Mock으로 주입
+  # ---------------------------------------------------------------
+  cloud:
+    aws:
+      credentials:
+        access-key: test-access-key
+        secret-key: test-secret-key
+      region:
+        static: ap-northeast-2
+      s3:
+        bucket: test-bucket
+
+# ---------------------------------------------------------------
+# 카카오 OAuth - 더미값 (테스트에서 KakaoOAuthClient를 직접 호출하지 않음)
+# ---------------------------------------------------------------
+kakao:
+  client-id: test-client-id
+  client-secret: test-client-secret
+  redirect-uri: http://localhost:8080/test/callback
+  token-uri: https://kauth.kakao.com/oauth/token
+  user-info-uri: https://kapi.kakao.com/v2/user/me
+
+# ---------------------------------------------------------------
+# JWT - 테스트용 시크릿 (256비트 이상 충족)
+# ---------------------------------------------------------------
+jwt:
+  secret: test-jwt-secret-key-for-testing-only-min-256-bits-long-padding
+  access-token-expiration: 3600000
+  refresh-token-expiration: 604800000
+
+ai:
+  service:
+    url: http://localhost:8000
+
+app:
+  frontend-url: http://localhost:3000
+  cookie-domain: localhost
+
+server:
+  port: 0   # 랜덤 포트 사용 (테스트 환경 포트 충돌 방지)
