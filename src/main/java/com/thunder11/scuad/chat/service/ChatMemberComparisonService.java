@@ -1,32 +1,29 @@
 package com.thunder11.scuad.chat.service;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
-import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import com.thunder11.scuad.auth.domain.User;
+import com.thunder11.scuad.auth.repository.UserRepository;
 import com.thunder11.scuad.chat.domain.ChatRoomMember;
 import com.thunder11.scuad.chat.dto.response.ComparisonResponse;
 import com.thunder11.scuad.chat.repository.ChatRoomMemberRepository;
 import com.thunder11.scuad.chat.repository.ChatRoomRepository;
 import com.thunder11.scuad.common.exception.ApiException;
 import com.thunder11.scuad.common.exception.ErrorCode;
-import com.thunder11.scuad.infra.ai.client.AiServiceClient;
-import com.thunder11.scuad.infra.ai.dto.request.AiCompareRequest;
-import com.thunder11.scuad.infra.ai.dto.response.AiCompareResponse;
-import com.thunder11.scuad.jobposting.domain.AiApplicantComparison;
-import com.thunder11.scuad.jobposting.domain.ComparisonMetric;
+import com.thunder11.scuad.jobposting.domain.AiEvalJob;
 import com.thunder11.scuad.jobposting.domain.JobApplication;
-import com.thunder11.scuad.jobposting.domain.JobMaster;
+import com.thunder11.scuad.jobposting.domain.type.AiJobStatus;
+import com.thunder11.scuad.jobposting.domain.type.AnalysisType;
+import com.thunder11.scuad.jobposting.event.AiComparisonCreateEvent;
 import com.thunder11.scuad.jobposting.repository.AiApplicantComparisonRepository;
+import com.thunder11.scuad.jobposting.repository.AiEvalJobRepository;
 import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
 
-// 채팅방 멤버 간 AI 비교 분석 서비스
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -36,12 +33,21 @@ public class ChatMemberComparisonService {
     private final ChatRoomMemberRepository chatRoomMemberRepository;
     private final JobApplicationRepository jobApplicationRepository;
     private final AiApplicantComparisonRepository aiApplicantComparisonRepository;
-    private final AiServiceClient aiServiceClient;
-    private final AiComparisonSaveHelper aiComparisonSaveHelper;
+    private final AiEvalJobRepository aiEvalJobRepository;
+    private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
+    /**
+     * AI 비교 분석 요청 — 비동기 (POST 전용)
+     *
+     * 기존 동기 구조에서는 AI 호출 응답까지 스레드를 점유했으나,
+     * 비동기 전환 후에는 AiEvalJob 생성 + RabbitMQ 메시지 발행만 수행하고 즉시 반환한다.
+     * 실제 AI 처리 및 DB 저장은 AI 서버가 큐를 소비한 뒤 /api/internal/ai/callback으로
+     * 결과를 전달하면 AiResultProcessingService가 처리한다.
+     */
     @Transactional
-    public ComparisonResponse compare(Long chatRoomId, Long requestUserId, Long chatRoomMemberId) {
-        log.info("비교 요청: chatRoomId={}, requestUserId={}, targetMemberId={}",
+    public void requestComparison(Long chatRoomId, Long requestUserId, Long chatRoomMemberId) {
+        log.info("비교 분석 요청: chatRoomId={}, requestUserId={}, targetMemberId={}",
                 chatRoomId, requestUserId, chatRoomMemberId);
 
         // 1. 채팅방 존재 확인
@@ -77,63 +83,85 @@ public class ChatMemberComparisonService {
                 .findById(targetMember.getJobApplicationId())
                 .orElseThrow(() -> new ApiException(ErrorCode.JOB_APPLICATION_NOT_FOUND));
 
-        // 7. DB에 기존 비교 결과 있으면 바로 반환 (AI 중복 호출 방지)
+        // 7. 요청자 User 조회 (AiEvalJob.requestedBy 필드용)
+        User requestUser = userRepository.findById(requestUserId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
+
+        // 8. AiEvalJob 생성
+        //    COMPARISON 타입은 콜백 수신 시 my + competitor 두 지원 ID가 모두 필요하므로
+        //    competitorApplication을 함께 저장한다
+        AiEvalJob evalJob = AiEvalJob.builder()
+                .jobApplication(myApplication)
+                .competitorApplication(competitorApplication)
+                .requestedBy(requestUser)
+                .analysisType(AnalysisType.COMPARISON)
+                .status(AiJobStatus.PENDING)
+                .build();
+        AiEvalJob savedJob = aiEvalJobRepository.save(evalJob);
+        savedJob.startProcessing();
+        aiEvalJobRepository.save(savedJob);
+
+        // 9. 이벤트 발행
+        //    트랜잭션 커밋 후 AiEvaluationWorker의 @TransactionalEventListener(AFTER_COMMIT)가 수신하여 MQ 발행.
+        //    트랜잭션 내부에서 직접 MQ를 발행하면 DB 롤백 시에도 메시지가 발행되는 문제가 있으므로
+        //    커밋 확정 후에 발행을 위임하는 방식을 사용한다.
+        eventPublisher.publishEvent(new AiComparisonCreateEvent(
+                savedJob.getId(),
+                myApplication.getUser().getUserId(),
+                myApplication.getJobMaster().getId(),
+                competitorApplication.getUser().getUserId()
+        ));
+        log.info("비교 분석 이벤트 발행 완료: evalJobId={}", savedJob.getId());
+    }
+
+    /**
+     * AI 비교 분석 결과 조회 — GET 전용
+     *
+     * 비동기 전환 후 이 메서드는 결과 조회만 담당한다.
+     * AI 처리가 아직 완료되지 않아 DB에 결과가 없으면 COMPARISON_RESULT_NOT_FOUND(404)를 반환하며,
+     * 클라이언트는 이 응답을 받으면 잠시 후 재조회(폴링)하면 된다.
+     */
+    @Transactional(readOnly = true)
+    public ComparisonResponse getComparisonResult(Long chatRoomId, Long requestUserId, Long chatRoomMemberId) {
+        log.info("비교 결과 조회: chatRoomId={}, requestUserId={}, targetMemberId={}",
+                chatRoomId, requestUserId, chatRoomMemberId);
+
+        // 1. 채팅방 존재 확인
+        chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 요청자가 채팅방 멤버인지 확인
+        ChatRoomMember myMember = chatRoomMemberRepository
+                .findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, requestUserId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+
+        // 3. 비교 대상 멤버 조회
+        ChatRoomMember targetMember = chatRoomMemberRepository
+                .findByChatRoomMemberIdAndKickedAtIsNull(chatRoomMemberId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_MEMBER_NOT_FOUND));
+
+        // 4. 대상 멤버가 같은 채팅방 소속인지 검증
+        if (!targetMember.getChatRoomId().equals(chatRoomId)) {
+            throw new ApiException(ErrorCode.CHAT_MEMBER_NOT_FOUND);
+        }
+
+        // 5. 지원서 조회
+        JobApplication myApplication = jobApplicationRepository
+                .findById(myMember.getJobApplicationId())
+                .orElseThrow(() -> new ApiException(ErrorCode.JOB_APPLICATION_NOT_FOUND));
+
+        JobApplication competitorApplication = jobApplicationRepository
+                .findById(targetMember.getJobApplicationId())
+                .orElseThrow(() -> new ApiException(ErrorCode.JOB_APPLICATION_NOT_FOUND));
+
+        // 6. 비교 결과 조회
+        //    AI 처리가 완료되지 않은 경우 404 반환 → 클라이언트 폴링 유도
         return aiApplicantComparisonRepository
                 .findByMyApplication_IdAndCompetitorApplication_Id(
                         myApplication.getId(),
                         competitorApplication.getId()
                 )
                 .map(ComparisonResponse::from)
-                .orElseGet(() -> callAiAndSave(myApplication, competitorApplication));
-    }
-
-    // AI 비교 API 호출 후 결과 저장
-    private ComparisonResponse callAiAndSave(
-            JobApplication myApplication,
-            JobApplication competitorApplication
-    ) {
-        JobMaster jobMaster = myApplication.getJobMaster();
-
-        // AI 서버에 비교 요청
-        AiCompareRequest aiRequest = AiCompareRequest.builder()
-                .jobPostingId(String.valueOf(jobMaster.getId()))
-                .userId(String.valueOf(myApplication.getUser().getUserId()))
-                .competitor(String.valueOf(competitorApplication.getUser().getUserId()))
-                .build();
-
-        AiCompareResponse aiResponse = aiServiceClient.compareApplicants(aiRequest);
-
-        // AI 응답을 도메인 객체로 변환
-        List<ComparisonMetric> metrics = aiResponse.getComparisonMetrics().stream()
-                .map(m -> new ComparisonMetric(m.getName(), m.getMyScore(), m.getCompetitorScore()))
-                .collect(Collectors.toList());
-
-        AiApplicantComparison comparison = AiApplicantComparison.builder()
-                .jobMaster(jobMaster)
-                .myApplication(myApplication)
-                .competitorApplication(competitorApplication)
-                .comparisonMetrics(metrics)
-                .strengthsReport(aiResponse.getStrengthsReport())
-                .weaknessesReport(aiResponse.getWeaknessesReport())
-                .build();
-
-        // race condition 대비: UNIQUE 제약 위반 시 이미 저장된 결과를 조회해서 반환
-        // REQUIRES_NEW 독립 트랜잭션으로 분리한 이유:
-        //   같은 트랜잭션 안에서 예외 발생 시 JPA 세션이 오염(rollback-only)되어
-        //   catch 후 findBy 시도 시 AssertionFailure 발생 → 이슈11과 동일한 문제
-        //   REQUIRES_NEW로 분리하면 예외 발생 시 내부 트랜잭션만 롤백되고
-        //   외부 세션은 깨끗하게 유지되어 findBy가 정상 동작함
-        try {
-            AiApplicantComparison saved = aiComparisonSaveHelper.trySave(comparison);
-            return ComparisonResponse.from(saved);
-        } catch (DataIntegrityViolationException e) {
-            log.warn("AI 비교 결과 중복 저장 감지, 기존 결과 반환: myApplicationId={}, competitorApplicationId={}",
-                    myApplication.getId(), competitorApplication.getId());
-            return aiApplicantComparisonRepository
-                    .findByMyApplication_IdAndCompetitorApplication_Id(
-                            myApplication.getId(), competitorApplication.getId())
-                    .map(ComparisonResponse::from)
-                    .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL_ERROR));
-        }
+                .orElseThrow(() -> new ApiException(ErrorCode.COMPARISON_RESULT_NOT_FOUND));
     }
 }

@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import com.thunder11.scuad.infra.ai.dto.response.AiCompareResponse;
 import com.thunder11.scuad.infra.ai.dto.response.AiEvaluationResultResponse;
 import com.thunder11.scuad.infra.ai.dto.response.AiPortfolioAnalysisResponse;
 import com.thunder11.scuad.infra.ai.dto.response.AiResumeAnalysisResponse;
@@ -28,6 +29,7 @@ public class AiResultProcessingService {
     private final AiApplicationEvaluationRepository aiApplicationEvaluationRepository;
     private final AiResumeAnalysisRepository aiResumeAnalysisRepository;
     private final AiPortfolioAnalysisRepository aiPortfolioAnalysisRepository;
+    private final AiApplicantComparisonRepository aiApplicantComparisonRepository;
     private final JobMasterRepository jobMasterRepository;
     private final ObjectMapper objectMapper;
     private final NotificationService notificationService;
@@ -58,6 +60,13 @@ public class AiResultProcessingService {
                     AiPortfolioAnalysisResponse result = objectMapper.treeToValue(response.getData(), AiPortfolioAnalysisResponse.class);
                     savePortfolioResult(aiEvalJob.getJobApplication(), result);
                 }
+                case COMPARISON -> {
+                    // COMPARISON 타입은 my + competitor 두 지원이 모두 필요.
+                    // AiEvalJob 생성 시 competitorApplication을 함께 저장해두었으므로
+                    // 콜백 수신 시점에 별도 조회 없이 바로 저장 가능.
+                    AiCompareResponse result = objectMapper.treeToValue(response.getData(), AiCompareResponse.class);
+                    saveComparisonResult(aiEvalJob.getJobApplication(), aiEvalJob.getCompetitorApplication(), result);
+                }
                 default -> throw new IllegalArgumentException("지원하지 않는 분석 타입: " + aiEvalJob.getAnalysisType());
             }
             aiEvalJob.complete();
@@ -72,6 +81,7 @@ public class AiResultProcessingService {
                 case EVALUATION ->  "AI_EVAL_COMPLETE";
                 case RESUME -> "RESUME_COMPLETE";
                 case PORTFOLIO -> "PORTFOLIO_COMPLETE";
+                case COMPARISON -> "COMPARISON_COMPLETE";
                 default -> "ANALYSIS_COMPLETE";
             };
 
@@ -85,6 +95,36 @@ public class AiResultProcessingService {
             aiEvalJob.fail(e.getMessage());
             aiEvalJobRepository.save(aiEvalJob);
         }
+    }
+
+    private void saveComparisonResult(JobApplication myApplication,
+                                       JobApplication competitorApplication,
+                                       AiCompareResponse result) {
+        List<ComparisonMetric> metrics = result.getComparisonMetrics().stream()
+                .map(m -> new ComparisonMetric(m.getName(), m.getMyScore(), m.getCompetitorScore()))
+                .collect(Collectors.toList());
+
+        // UNIQUE 제약(my_application_id, competitor_application_id)으로
+        // 동일 조합 중복 저장은 DB 레벨에서 방지됨
+        aiApplicantComparisonRepository.findByMyApplication_IdAndCompetitorApplication_Id(
+                myApplication.getId(), competitorApplication.getId()
+        ).ifPresentOrElse(
+                existing -> log.info("비교 결과 이미 존재, 저장 생략: myApplicationId={}, competitorApplicationId={}",
+                        myApplication.getId(), competitorApplication.getId()),
+                () -> {
+                    AiApplicantComparison comparison = AiApplicantComparison.builder()
+                            .jobMaster(myApplication.getJobMaster())
+                            .myApplication(myApplication)
+                            .competitorApplication(competitorApplication)
+                            .comparisonMetrics(metrics)
+                            .strengthsReport(result.getStrengthsReport())
+                            .weaknessesReport(result.getWeaknessesReport())
+                            .build();
+                    aiApplicantComparisonRepository.save(comparison);
+                    log.info("AI 비교 결과 저장 완료: myApplicationId={}, competitorApplicationId={}",
+                            myApplication.getId(), competitorApplication.getId());
+                }
+        );
     }
 
     private void saveEvaluationResult(JobApplication application, AiEvaluationResultResponse result) {

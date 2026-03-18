@@ -378,9 +378,33 @@ public class ChatRoomController {
         );
     }
 
-    // 채팅방 멤버와 나의 AI 비교 분석
+    // 채팅방 멤버와 AI 비교 분석 요청 (비동기)
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @PostMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}/comparison")
+    public ApiResponse<Void> requestComparison(
+            @PathVariable Long chatRoomId,
+            @PathVariable Long chatRoomMemberId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("POST /api/v1/chat-rooms/{}/members/{}/comparison - userId={}",
+                chatRoomId, chatRoomMemberId, userPrincipal.getUserId());
+
+        chatMemberComparisonService.requestComparison(
+                chatRoomId,
+                userPrincipal.getUserId(),
+                chatRoomMemberId
+        );
+
+        return ApiResponse.of(
+                HttpStatus.ACCEPTED.value(),
+                "COMPARISON_REQUESTED",
+                "비교 분석 요청이 접수되었습니다. 잠시 후 결과를 조회해주세요."
+        );
+    }
+
+    // 채팅방 멤버와 AI 비교 분석 결과 조회
     @GetMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}/comparison")
-    public ApiResponse<ComparisonResponse> compareWithMember(
+    public ApiResponse<ComparisonResponse> getComparisonResult(
             @PathVariable Long chatRoomId,
             @PathVariable Long chatRoomMemberId,
             @AuthenticationPrincipal UserPrincipal userPrincipal
@@ -388,7 +412,7 @@ public class ChatRoomController {
         log.info("GET /api/v1/chat-rooms/{}/members/{}/comparison - userId={}",
                 chatRoomId, chatRoomMemberId, userPrincipal.getUserId());
 
-        ComparisonResponse response = chatMemberComparisonService.compare(
+        ComparisonResponse response = chatMemberComparisonService.getComparisonResult(
                 chatRoomId,
                 userPrincipal.getUserId(),
                 chatRoomMemberId

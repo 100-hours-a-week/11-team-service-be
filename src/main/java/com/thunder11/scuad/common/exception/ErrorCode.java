@@ -56,6 +56,7 @@ public enum ErrorCode {
     NICKNAME_DUPLICATE(HttpStatus.CONFLICT, "USER_002", "이미 사용 중인 닉네임입니다."),
     USER_ALREADY_WITHDRAWN(HttpStatus.FORBIDDEN, "USER_003", "이미 탈퇴한 사용자입니다."),
     COMPARISON_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "COMPARISON_SELF_NOT_ALLOWED", "자기 자신과는 비교할 수 없습니다."),
+    COMPARISON_RESULT_NOT_FOUND(HttpStatus.NOT_FOUND, "COMPARISON_RESULT_NOT_FOUND", "비교 분석 결과가 아직 준비되지 않았습니다. 잠시 후 다시 조회해주세요."),
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", "제출된 문서가 없습니다.");
 
     private final HttpStatus status;
