@@ -10,7 +10,13 @@ import com.thunder11.scuad.common.entity.BaseTimeEntity;
 // 사용자 OAuth 계정 연동 정보
 // 한 사용자가 여러 OAuth 제공자 계정 연동 가능 (지금은 kakao)
 @Entity
-@Table(name = "user_oauth_accounts")
+@Table(
+        name = "user_oauth_accounts",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_oauth_accounts_provider_user",
+                columnNames = {"provider", "provider_user_id"}
+        )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserOAuthAccount extends BaseTimeEntity {
