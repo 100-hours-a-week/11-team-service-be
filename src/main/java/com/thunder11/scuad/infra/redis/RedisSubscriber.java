@@ -54,7 +54,8 @@ public class RedisSubscriber implements MessageListener {
             // Map으로 역직렬화 → ChatMessageResponse의 JSON 구조를 그대로 보존
             Map<String, Object> messageData = objectMapper.readValue(
                     message.getBody(),
-                    new TypeReference<Map<String, Object>>() {}
+                    new TypeReference<Map<String, Object>>() {
+                    }
             );
 
             messagingTemplate.convertAndSend("/topic/chat-rooms/" + chatRoomId, messageData);
