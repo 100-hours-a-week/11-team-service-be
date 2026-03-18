@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 
 import lombok.RequiredArgsConstructor;
 
@@ -77,6 +78,7 @@ public class JobPostingManagementService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(value = "jobDetail", key = "#jobMasterId", cacheManager = "cacheManager")
     public JobPostingDetailResponse getJobPostingDetail(Long jobMasterId) {
         JobMaster jobMaster = jobMasterRepository.findByIdWithDetails(jobMasterId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고 상세 정보를 찾을 수 없습니다."));
@@ -85,7 +87,10 @@ public class JobPostingManagementService {
     }
 
     @Transactional
-    @CacheEvict(value = "jobPostings", allEntries = true)
+    @Caching(evict = {
+            @CacheEvict(value = "jobPostings", allEntries = true),
+            @CacheEvict(value = "jobDetail", key = "#jobMasterId")
+    })
     public JobPostingConfirmResponse confirmJobPosting(Long jobMasterId, Long userId, RegistrationStatus status) {
         JobMaster jobMaster = jobMasterRepository.findById(jobMasterId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "채용공고를 찾을 수 없습니다."));
@@ -112,6 +117,10 @@ public class JobPostingManagementService {
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "jobPostings", allEntries = true),
+            @CacheEvict(value = "jobDetail", key = "#jobMasterId")
+    })
     public void deleteJobPosting(Long jobMasterId, Long userId) {
         JobMaster jobMaster = jobMasterRepository.findById(jobMasterId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "삭제할 공고를 찾을 수 없습니다."));
