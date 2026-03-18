@@ -191,6 +191,7 @@ class OAuthConcurrencyTest {
                     doneLatch.countDown();
                 }
             });
+        }
 
         startLatch.countDown();
         doneLatch.await();
