@@ -10,10 +10,12 @@ import com.thunder11.scuad.auth.repository.UserRepository;
 import com.thunder11.scuad.chat.domain.type.MessageType;
 import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
 import com.thunder11.scuad.file.repository.FileObjectRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,10 +44,25 @@ public class ChatMessageService {
     private final UserRepository userRepository;
     private final FileObjectRepository fileObjectRepository;
     private final S3FileManagementService s3FileManagementService;
-    private final SimpMessagingTemplate messagingTemplate;
+
+    // Redis Pub/Sub 전환 근거:
+    //   기존 SimpMessagingTemplate은 서버 내부 In-Memory 브로커로만 브로드캐스트
+    //   → 다중 서버 환경에서 메시지 수신자가 다른 서버에 연결된 경우 유실 발생 (실측 40%)
+    //   Redis publish → 모든 서버의 RedisSubscriber가 수신 → WebSocket 브로드캐스트
+    //   → 서버 연결과 무관하게 전파 보장
+    //
+    // @Autowired(required = false) 적용 근거:
+    //   RedisPubSubConfig가 @ConditionalOnProperty로 조건부 로드되므로
+    //   Redis 비활성화 환경(테스트, 로컬)에서는 chatRedisTemplate 빈이 존재하지 않음
+    //   required = false로 설정하여 빈이 없어도 컨텍스트 로드 성공하도록 처리
+    //   실제 broadcast() 호출 시 null 체크로 안전하게 처리
+    @Autowired(required = false)
+    @Qualifier("chatRedisTemplate")
+    private RedisTemplate<String, Object> redisTemplate;
 
     private record FileInfo(Long fileId, String fileName, String contentType, Long fileSize) {
     }
+
     // ChatMessage -> ChatMessageResponse 변환
     private ChatMessageResponse convertToResponse(ChatMessage message, Map<Long, String> nicknameMap, Map<Long, FileInfo> fileInfoMap) {
         // 발신자 닉네임 조회
@@ -296,15 +313,23 @@ public class ChatMessageService {
     // WebSocket 브로드캐스트 — @Transactional 밖에서 호출해야 함
     //
     // 분리 근거:
-    //   sendMessage()는 @Transactional 메서드이므로, 메서드 내부에서 convertAndSend()를 호출하면
+    //   sendMessage()는 @Transactional 메서드이므로, 메서드 내부에서 publish를 호출하면
     //   트랜잭션 커밋 전에 브로드캐스트가 발생한다.
     //   이 경우 메시지를 받은 클라이언트가 즉시 GET /messages를 호출하면
     //   아직 커밋되지 않은 데이터를 조회하여 메시지가 누락되는 레이스 컨디션이 발생한다.
     //
     // 호출 위치: ChatRoomController.sendMessage() — sendMessage() 리턴 후 즉시 호출
     //   sendMessage() 리턴 시점 = 트랜잭션 커밋 완료 시점이므로 레이스 컨디션 해소
+    //
+    // Redis 채널명 규칙: chat-room:{chatRoomId}
+    //   RedisSubscriber가 PatternTopic("chat-room:*")으로 구독하므로 패턴 일치 필요
     public void broadcast(Long chatRoomId, ChatMessageResponse result) {
-        messagingTemplate.convertAndSend("/topic/chat-rooms/" + chatRoomId, result);
-        log.info("WebSocket 브로드캐스트 완료: chatRoomId={}, messageId={}", chatRoomId, result.getMessageId());
+        if (redisTemplate == null) {
+            log.warn("Redis Pub/Sub 비활성화 상태 — 브로드캐스트 스킵: chatRoomId={}", chatRoomId);
+            return;
+        }
+        String channel = "chat-room:" + chatRoomId;
+        redisTemplate.convertAndSend(channel, result);
+        log.info("Redis Pub/Sub 브로드캐스트 완료: channel={}, messageId={}", channel, result.getMessageId());
     }
 }
