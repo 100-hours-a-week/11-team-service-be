@@ -54,7 +54,7 @@ public class UserRegistrationHelper {
                 .connectedAt(LocalDateTime.now())
                 .build();
 
-        UserOAuthAccount savedOAuthAccount = oAuthAccountRepository.save(oAuthAccount);
+        UserOAuthAccount savedOAuthAccount = oAuthAccountRepository.saveAndFlush(oAuthAccount);
         log.info("OAuth 계정 연동 완료: provider={}, providerUserId={}", provider, providerUserId);
 
         return savedOAuthAccount;
