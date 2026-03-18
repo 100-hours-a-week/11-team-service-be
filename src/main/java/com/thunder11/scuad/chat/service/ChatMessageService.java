@@ -10,6 +10,7 @@ import com.thunder11.scuad.auth.repository.UserRepository;
 import com.thunder11.scuad.chat.domain.type.MessageType;
 import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
 import com.thunder11.scuad.file.repository.FileObjectRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -49,8 +50,15 @@ public class ChatMessageService {
     //   → 다중 서버 환경에서 메시지 수신자가 다른 서버에 연결된 경우 유실 발생 (실측 40%)
     //   Redis publish → 모든 서버의 RedisSubscriber가 수신 → WebSocket 브로드캐스트
     //   → 서버 연결과 무관하게 전파 보장
+    //
+    // @Autowired(required = false) 적용 근거:
+    //   RedisPubSubConfig가 @ConditionalOnProperty로 조건부 로드되므로
+    //   Redis 비활성화 환경(테스트, 로컬)에서는 chatRedisTemplate 빈이 존재하지 않음
+    //   required = false로 설정하여 빈이 없어도 컨텍스트 로드 성공하도록 처리
+    //   실제 broadcast() 호출 시 null 체크로 안전하게 처리
+    @Autowired(required = false)
     @Qualifier("chatRedisTemplate")
-    private final RedisTemplate<String, Object> redisTemplate;
+    private RedisTemplate<String, Object> redisTemplate;
 
     private record FileInfo(Long fileId, String fileName, String contentType, Long fileSize) {
     }
@@ -316,6 +324,10 @@ public class ChatMessageService {
     // Redis 채널명 규칙: chat-room:{chatRoomId}
     //   RedisSubscriber가 PatternTopic("chat-room:*")으로 구독하므로 패턴 일치 필요
     public void broadcast(Long chatRoomId, ChatMessageResponse result) {
+        if (redisTemplate == null) {
+            log.warn("Redis Pub/Sub 비활성화 상태 — 브로드캐스트 스킵: chatRoomId={}", chatRoomId);
+            return;
+        }
         String channel = "chat-room:" + chatRoomId;
         redisTemplate.convertAndSend(channel, result);
         log.info("Redis Pub/Sub 브로드캐스트 완료: channel={}, messageId={}", channel, result.getMessageId());

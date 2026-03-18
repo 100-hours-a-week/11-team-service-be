@@ -1,7 +1,11 @@
 package com.thunder11.scuad.infra.redis.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.thunder11.scuad.infra.redis.RedisSubscriber;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -18,8 +22,15 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 //   RedisCacheConfig  → 채용공고 목록 캐싱 전용 (데이터 저장/조회)
 //   RedisPubSubConfig → 채팅 메시지 브로드캐스트 전용 (다중 서버 간 메시지 전파)
 //   두 설정은 사용하는 Redis 기능이 완전히 다르므로 분리하여 변경 영향 범위를 최소화
+//
+// @ConditionalOnProperty 적용 근거:
+//   RedisCacheManager(캐싱)는 실제 캐시 조회 시점에 Redis 연결을 시도하지만
+//   RedisMessageListenerContainer(Pub/Sub)는 애플리케이션 시작 시점에 즉시 Redis 연결을 시도함
+//   테스트/로컬 환경처럼 Redis가 없는 환경에서 컨텍스트 로드 실패를 방지하기 위해
+//   spring.data.redis.pubsub.enabled=true 일 때만 Pub/Sub 설정을 활성화
 @Configuration
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "spring.data.redis.pubsub.enabled", havingValue = "true")
 public class RedisPubSubConfig {
 
     private final RedisSubscriber redisSubscriber;
@@ -32,13 +43,19 @@ public class RedisPubSubConfig {
     //   @Qualifier("chatRedisTemplate")로 주입받아 용도를 명시적으로 구분
     @Bean(name = "chatRedisTemplate")
     public RedisTemplate<String, Object> chatRedisTemplate(RedisConnectionFactory connectionFactory) {
+        // JavaTimeModule 등록 근거:
+        //   ChatMessageResponse에 LocalDateTime(createdAt) 필드가 있어
+        //   기본 GenericJackson2JsonRedisSerializer는 Java 8 날짜 타입을 지원하지 않음
+        //   JavaTimeModule을 등록하지 않으면 Redis publish 시 SerializationException 발생
+        //   WRITE_DATES_AS_TIMESTAMPS 비활성화: ISO-8601 문자열로 직렬화하여 가독성 확보
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
-        // key: 채널명 문자열 (예: chat-room:1) → StringRedisSerializer
         template.setKeySerializer(new StringRedisSerializer());
-        // value: ChatMessageResponse JSON 직렬화 → GenericJackson2JsonRedisSerializer
-        //        역직렬화 시 @class 필드로 타입을 복원하므로 별도 타입 지정 불필요
-        template.setValueSerializer(new GenericJackson2JsonRedisSerializer());
+        template.setValueSerializer(new GenericJackson2JsonRedisSerializer(objectMapper));
         return template;
     }
 
