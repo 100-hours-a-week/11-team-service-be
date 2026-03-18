@@ -1,6 +1,6 @@
 package com.thunder11.scuad.chat.service;
 
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,12 +15,11 @@ import com.thunder11.scuad.chat.repository.ChatRoomMemberRepository;
 import com.thunder11.scuad.chat.repository.ChatRoomRepository;
 import com.thunder11.scuad.common.exception.ApiException;
 import com.thunder11.scuad.common.exception.ErrorCode;
-import com.thunder11.scuad.infra.rabbitmq.config.RabbitMQConfig;
-import com.thunder11.scuad.infra.rabbitmq.dto.AiRequestMessage;
 import com.thunder11.scuad.jobposting.domain.AiEvalJob;
 import com.thunder11.scuad.jobposting.domain.JobApplication;
 import com.thunder11.scuad.jobposting.domain.type.AiJobStatus;
 import com.thunder11.scuad.jobposting.domain.type.AnalysisType;
+import com.thunder11.scuad.jobposting.event.AiComparisonCreateEvent;
 import com.thunder11.scuad.jobposting.repository.AiApplicantComparisonRepository;
 import com.thunder11.scuad.jobposting.repository.AiEvalJobRepository;
 import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
@@ -36,7 +35,7 @@ public class ChatMemberComparisonService {
     private final AiApplicantComparisonRepository aiApplicantComparisonRepository;
     private final AiEvalJobRepository aiEvalJobRepository;
     private final UserRepository userRepository;
-    private final RabbitTemplate rabbitTemplate;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * AI 비교 분석 요청 — 비동기 (POST 전용)
@@ -102,22 +101,17 @@ public class ChatMemberComparisonService {
         savedJob.startProcessing();
         aiEvalJobRepository.save(savedJob);
 
-        // 9. RabbitMQ 메시지 발행
-        //    AI 호출을 큐에 위임하고 즉시 반환하여 요청 스레드를 해제한다
-        AiRequestMessage message = AiRequestMessage.builder()
-                .evalJobId(String.valueOf(savedJob.getId()))
-                .userId(String.valueOf(myApplication.getUser().getUserId()))
-                .jobPostingId(String.valueOf(myApplication.getJobMaster().getId()))
-                .competitor(String.valueOf(competitorApplication.getUser().getUserId()))
-                .build();
-
-        rabbitTemplate.convertAndSend(
-                RabbitMQConfig.EXCHANGE_NAME,
-                RabbitMQConfig.QUEUE_COMPARISON,
-                message
-        );
-        log.info("RabbitMQ 발송 완료: evalJobId={}, queue={}",
-                savedJob.getId(), RabbitMQConfig.QUEUE_COMPARISON);
+        // 9. 이벤트 발행
+        //    트랜잭션 커밋 후 AiEvaluationWorker의 @TransactionalEventListener(AFTER_COMMIT)가 수신하여 MQ 발행.
+        //    트랜잭션 내부에서 직접 MQ를 발행하면 DB 롤백 시에도 메시지가 발행되는 문제가 있으므로
+        //    커밋 확정 후에 발행을 위임하는 방식을 사용한다.
+        eventPublisher.publishEvent(new AiComparisonCreateEvent(
+                savedJob.getId(),
+                myApplication.getUser().getUserId(),
+                myApplication.getJobMaster().getId(),
+                competitorApplication.getUser().getUserId()
+        ));
+        log.info("비교 분석 이벤트 발행 완료: evalJobId={}", savedJob.getId());
     }
 
     /**
