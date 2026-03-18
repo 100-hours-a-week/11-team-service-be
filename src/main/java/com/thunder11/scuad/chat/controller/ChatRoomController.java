@@ -379,6 +379,7 @@ public class ChatRoomController {
     }
 
     // 채팅방 멤버와 AI 비교 분석 요청 (비동기)
+    @ResponseStatus(HttpStatus.ACCEPTED)
     @PostMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}/comparison")
     public ApiResponse<Void> requestComparison(
             @PathVariable Long chatRoomId,

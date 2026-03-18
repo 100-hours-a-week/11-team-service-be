@@ -28,16 +28,19 @@ INSERT INTO job_masters (job_master_id, company_id, job_title, status, created_a
 VALUES (1, 1, '백엔드 개발자', 'OPEN', NOW(), NOW());
 
 -- ⑤ job_post 생성
+-- JobSourceType enum: ADMIN / USER / SCRAPED  ('MANUAL' 없음 → ADMIN)
+-- RegistrationStatus enum: DRAFT / CONFIRMED / CANCELED  ('REGISTERED' 없음 → CONFIRMED)
 INSERT INTO job_posts (job_post_id, job_master_id, ai_job_id, company_id, source_type, source_url, source_url_hash,
                        raw_company_name, raw_job_title, recruitment_status, registration_status, fingerprint_hash, created_at, updated_at)
-VALUES (1, 1, 1, 1, 'MANUAL', 'https://test.com/job/1', SHA2('https://test.com/job/1', 256),
-        '테스트주식회사', '백엔드 개발자', 'OPEN', 'REGISTERED', SHA2('test-fingerprint-1', 256), NOW(), NOW());
+VALUES (1, 1, 1, 1, 'ADMIN', 'https://test.com/job/1', SHA2('https://test.com/job/1', 256),
+        '테스트주식회사', '백엔드 개발자', 'OPEN', 'CONFIRMED', SHA2('test-fingerprint-1', 256), NOW(), NOW());
 
 -- ⑥ 지원 이력
+-- ApplicationStatus enum: SUBMITTED / ACTIVE / ARCHIVED  ('APPLIED' 없음)
 INSERT INTO job_applications (job_application_id, user_id, job_master_id, status, created_at, updated_at)
 VALUES
-    (1, 1, 1, 'APPLIED', NOW(), NOW()),
-    (2, 2, 1, 'APPLIED', NOW(), NOW());
+    (1, 1, 1, 'SUBMITTED', NOW(), NOW()),
+    (2, 2, 1, 'SUBMITTED', NOW(), NOW());
 
 -- ⑦ AI 평가 결과 (cutline_score 통과용)
 INSERT INTO ai_applicant_evaluation (evaluation_id, job_application_id, overall_score,
@@ -49,7 +52,7 @@ VALUES
 -- ⑧ 채팅방 생성
 INSERT INTO chat_rooms (chat_room_id, job_master_id, created_by, room_name, max_participants,
                         room_goal, cutline_score, preferred_conditions, status, created_at, updated_at)
-VALUES (1, 1, 1, '백엔드 스터디방', 10, 'INTERVIEW', 80, NULL, 'OPEN', NOW(), NOW());
+VALUES (1, 1, 1, '백엔드 스터디방', 10, 'INTERVIEW', 80, NULL, 'ACTIVE', NOW(), NOW());
 
 -- ⑨ 채팅방 멤버
 INSERT INTO chat_room_members (chat_room_member_id, chat_room_id, user_id, job_application_id, role, joined_at)
