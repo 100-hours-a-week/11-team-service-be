@@ -82,9 +82,25 @@ public class AuthService {
         log.info("카카오 사용자 정보 조회 완료: kakaoUserId={}", kakaoUserId);
 
         // 3. 기존 사용자 조회 또는 신규 회원가입
-        UserOAuthAccount oAuthAccount = oAuthAccountRepository
-                .findByProviderAndProviderUserId(OAuthProvider.KAKAO, kakaoUserId)
-                .orElseGet(() -> registerNewUser(userInfo));
+        // 동시 가입 race condition 방어:
+        //   동일한 kakaoUserId로 동시에 2개 이상의 콜백이 들어올 경우
+        //   findBy → orElseGet → registerNewUser → tryCreateUser → saveAndFlush 흐름에서
+        //   user_oauth_accounts UK 위반(uk_provider_user_id)이 발생할 수 있음.
+        //   닉네임 충돌은 registerNewUser() 내부 루프에서 처리되고
+        //   10회 초과 시 ApiException(INTERNAL_ERROR)을 던지므로
+        //   여기까지 전파되는 DataIntegrityViolationException은 OAuth UK 위반으로 간주하여
+        //   이미 저장된 계정을 재조회해 정상 로그인 흐름으로 복구한다.
+        UserOAuthAccount oAuthAccount;
+        try {
+            oAuthAccount = oAuthAccountRepository
+                    .findByProviderAndProviderUserId(OAuthProvider.KAKAO, kakaoUserId)
+                    .orElseGet(() -> registerNewUser(userInfo));
+        } catch (DataIntegrityViolationException e) {
+            log.warn("동시 가입 충돌 감지, 기존 계정 재조회: kakaoUserId={}", kakaoUserId);
+            oAuthAccount = oAuthAccountRepository
+                    .findByProviderAndProviderUserId(OAuthProvider.KAKAO, kakaoUserId)
+                    .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL_ERROR));
+        }
 
         User user = oAuthAccount.getUser();
 
