@@ -6,6 +6,7 @@ import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -25,23 +26,38 @@ public class RabbitMQConfig {
 
     @Bean
     public Queue evaluationQueue() {
-        return new Queue(QUEUE_EVALUATION);
+        return QueueBuilder.durable(QUEUE_EVALUATION)
+                .withArgument("x-dead-letter-exchange", "")
+                .withArgument("x-dead-letter-routing-key", QUEUE_EVALUATION + ".dead_letter")
+                .build();
     }
     @Bean
     public Queue resumeQueue() {
-        return new Queue(QUEUE_RESUME);
+        return QueueBuilder.durable(QUEUE_RESUME)
+                .withArgument("x-dead-letter-exchange", "")
+                .withArgument("x-dead-letter-routing-key", QUEUE_RESUME + ".dead_letter")
+                .build();
     }
     @Bean
     public Queue portfolioQueue() {
-        return new Queue(QUEUE_PORTFOLIO);
+        return QueueBuilder.durable(QUEUE_PORTFOLIO)
+                .withArgument("x-dead-letter-exchange", "")
+                .withArgument("x-dead-letter-routing-key", QUEUE_PORTFOLIO + ".dead_letter")
+                .build();
     }
     @Bean
     public Queue comparisonQueue() {
-        return new Queue(QUEUE_COMPARISON);
+        return QueueBuilder.durable(QUEUE_COMPARISON)
+                .withArgument("x-dead-letter-exchange", "")
+                .withArgument("x-dead-letter-routing-key", QUEUE_COMPARISON + ".dead_letter")
+                .build();
     }
     @Bean
     public Queue jobpostingQueue() {
-        return new Queue(QUEUE_JOBPOSTING);
+        return QueueBuilder.durable(QUEUE_JOBPOSTING)
+                .withArgument("x-dead-letter-exchange", "")
+                .withArgument("x-dead-letter-routing-key", QUEUE_JOBPOSTING + ".dead_letter")
+                .build();
     }
 
 
