@@ -23,4 +23,6 @@ public class AiRequestMessage {
     // EVALUATION/RESUME/PORTFOLIO 요청 시에는 null로 전송되며 기존 동작에 영향 없음.
     @JsonProperty("competitor")
     private String competitor;
+    @JsonProperty("url")
+    private String url;
 }

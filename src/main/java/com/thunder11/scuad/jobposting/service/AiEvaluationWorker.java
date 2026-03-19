@@ -1,5 +1,6 @@
 package com.thunder11.scuad.jobposting.service;
 
+import com.thunder11.scuad.jobposting.event.AiJobPostingAnalysisCreateEvent;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,23 @@ public class AiEvaluationWorker {
 
     private final AiEvalJobRepository aiEvalJobRepository;
     private final RabbitTemplate rabbitTemplate;
+
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void processJobPostingAnalysisAsync(AiJobPostingAnalysisCreateEvent event) {
+        log.info("채용공고 분석 메시지 발송 시작: evalJobId={}", event.getEvalJobId());
+        AiEvalJob aiEvalJob = aiEvalJobRepository.findById(event.getEvalJobId())
+                .orElseThrow(() -> new IllegalStateException("분석 작업을 찾을 수 없습니다."));
+        AiRequestMessage message = AiRequestMessage.builder()
+                .evalJobId(String.valueOf(aiEvalJob.getId()))
+                .userId(String.valueOf(event.getUserId()))
+                .url(aiEvalJob.getSourceUrl())
+                .build();
+        aiEvalJob.startProcessing();
+        aiEvalJobRepository.save(aiEvalJob);
+        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.QUEUE_JOBPOSTING, message);
+        log.info("채용공고 분석 RabbitMQ 발송 완료 - evalJobId: {}", aiEvalJob.getId());
+    }
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -80,10 +98,12 @@ public class AiEvaluationWorker {
 
     private String getQueueNameByType(AnalysisType type) {
         return switch (type) {
+            case JOBPOSTING ->  RabbitMQConfig.QUEUE_JOBPOSTING;
             case EVALUATION -> RabbitMQConfig.QUEUE_EVALUATION;
             case RESUME -> RabbitMQConfig.QUEUE_RESUME;
             case PORTFOLIO -> RabbitMQConfig.QUEUE_PORTFOLIO;
             case COMPARISON ->  RabbitMQConfig.QUEUE_COMPARISON;
+
         };
     }
 }
