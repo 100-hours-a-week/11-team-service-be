@@ -15,4 +15,7 @@ public interface AiEvalJobRepository extends JpaRepository<AiEvalJob, Long> {
         Optional<AiEvalJob> findFirstByRequestedByUserIdAndJobApplicationJobMasterIdAndAnalysisTypeOrderByIdDesc(
                         Long userId,
                         Long jobMasterId, AnalysisType analysisType);
+
+        Optional<AiEvalJob> findFirstBySourceUrlAndStatusInOrderByIdDesc(String sourceUrl,
+                        java.util.Collection<com.thunder11.scuad.jobposting.domain.type.AiJobStatus> statuses);
 }

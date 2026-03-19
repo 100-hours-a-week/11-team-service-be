@@ -107,11 +107,24 @@ public class JobPostingAnalysisService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없습니다."));
 
+        Optional<AiEvalJob> activeJob = aiEvalJobRepository.findFirstBySourceUrlAndStatusInOrderByIdDesc(
+                normalizedUrl, List.of(AiJobStatus.PENDING, AiJobStatus.PROCESSING));
+
+        if (activeJob.isPresent()) {
+            log.info("이미 분석 진행 중인 URL: {}", normalizedUrl);
+            return JobAnalysisResultResponse.builder()
+                    .isProcessing(true)
+                    .isAlreadyProcessing(true)
+                    .evalJobId(activeJob.get().getId())
+                    .isExisting(false)
+                    .build();
+        }
+
         AiEvalJob aiEvalJob = AiEvalJob.builder()
                 .requestedBy(user)
                 .analysisType(AnalysisType.JOBPOSTING)
                 .status(AiJobStatus.PENDING)
-                .sourceUrl(url)
+                .sourceUrl(normalizedUrl)
                 .build();
         aiEvalJobRepository.save(aiEvalJob);
 
@@ -119,6 +132,7 @@ public class JobPostingAnalysisService {
 
         return JobAnalysisResultResponse.builder()
                 .isProcessing(true)
+                .isAlreadyProcessing(false)
                 .evalJobId(aiEvalJob.getId())
                 .isExisting(false)
                 .build();

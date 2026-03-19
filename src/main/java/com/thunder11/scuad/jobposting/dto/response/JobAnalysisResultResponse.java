@@ -34,5 +34,9 @@ public class JobAnalysisResultResponse {
 
     @JsonProperty("isProcessing")
     private boolean isProcessing;
+
+    @JsonProperty("isAlreadyProcessing")
+    private boolean isAlreadyProcessing;
+
     private Long evalJobId;
 }
