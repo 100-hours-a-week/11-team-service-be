@@ -21,12 +21,15 @@ public class CursorTokenUtil {
 
     private static final String HMAC_ALGO = "HmacSHA256";
     private static final String VERSION = "v1";
+    private static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);
 
     public String createToken(Long id, LocalDate endDate, JobStatus status) {
-        if (id == null || endDate == null || status == null) {
+        if (id == null || status == null) {
             return null;
         }
-        long epochMills = endDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+
+        LocalDate effectiveDate = (endDate != null) ? endDate : MAX_DATE;
+        long epochMills = effectiveDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
         String payload = String.format("%s|%d|%s|%s", VERSION, id, epochMills, status.name());
         String signature = generateHmac(payload);
         String rawToken = payload + ":" + signature;

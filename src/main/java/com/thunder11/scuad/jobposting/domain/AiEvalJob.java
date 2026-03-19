@@ -40,8 +40,11 @@ public class AiEvalJob {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "job_application_id", nullable = false)
+    @JoinColumn(name = "job_application_id", nullable = true)
     private JobApplication jobApplication;
+
+    @Column(name = "source_url", length = 512)
+    private String sourceUrl;
 
     // COMPARISON 타입 전용: 비교 대상 지원자의 지원 ID
     // AI 콜백 수신 시 ai_applicant_comparison 저장에 my + competitor 두 값이 모두 필요하므로
@@ -72,12 +75,13 @@ public class AiEvalJob {
 
     @Builder
     public AiEvalJob(JobApplication jobApplication, JobApplication competitorApplication,
-                     User requestedBy, AnalysisType analysisType, AiJobStatus status) {
+                     User requestedBy, AnalysisType analysisType, AiJobStatus status, String sourceUrl) {
         this.jobApplication = jobApplication;
         this.competitorApplication = competitorApplication;
         this.requestedBy = requestedBy;
         this.analysisType = analysisType;
         this.status = status;
+        this.sourceUrl = sourceUrl;
     }
 
     public void complete() {

@@ -31,8 +31,14 @@ public class NotificationService {
         }
         String title;
         String body;
+        String refType = "APPLICATION";
 
         switch (type) {
+            case "JOB_POSTING_COMPLETE" -> {
+                title = "공고 분석 완료";
+                body = "채용공고 분석이 완료되었습니다. 지금 확인해 보세요!";
+                refType = "JOBPOSTING";
+            }
             case "AI_EVAL_COMPLETE" -> {
                 title = safeJobTitle + "평가 완료";
                 body = "평가가 완료된 내 점수를 확인하세요";
@@ -56,7 +62,7 @@ public class NotificationService {
                 .title(title)
                 .body(body)
                 .type(type)
-                .refType("APPLICATION")
+                .refType(refType)
                 .refId(applicationId)
                 .isRead(false)
                 .build();

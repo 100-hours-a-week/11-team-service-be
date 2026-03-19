@@ -3,6 +3,7 @@ package com.thunder11.scuad.jobposting.dto.response;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,6 +17,7 @@ public class JobAnalysisResultResponse {
     private Long jobMasterId;
     private Long jobPostingId;
 
+    @JsonProperty("isExisting")
     private boolean isExisting;
 
     private String companyName;
@@ -29,4 +31,8 @@ public class JobAnalysisResultResponse {
     private LocalDate endDate;
     private String aiSummary;
     private String registrationStatus;
+
+    @JsonProperty("isProcessing")
+    private boolean isProcessing;
+    private Long evalJobId;
 }
