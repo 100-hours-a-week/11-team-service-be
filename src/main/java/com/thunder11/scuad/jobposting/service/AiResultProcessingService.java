@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import com.thunder11.scuad.infra.ai.dto.response.*;
+import com.thunder11.scuad.jobposting.domain.type.AnalysisType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,10 +14,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import com.thunder11.scuad.infra.ai.dto.response.AiCompareResponse;
-import com.thunder11.scuad.infra.ai.dto.response.AiEvaluationResultResponse;
-import com.thunder11.scuad.infra.ai.dto.response.AiPortfolioAnalysisResponse;
-import com.thunder11.scuad.infra.ai.dto.response.AiResumeAnalysisResponse;
 import com.thunder11.scuad.infra.rabbitmq.dto.AiResponseMessage;
 import com.thunder11.scuad.jobposting.domain.*;
 import com.thunder11.scuad.jobposting.repository.*;
@@ -33,6 +31,7 @@ public class AiResultProcessingService {
     private final JobMasterRepository jobMasterRepository;
     private final ObjectMapper objectMapper;
     private final NotificationService notificationService;
+    private final JobPostingAnalysisService jobPostingAnalysisService;
 
     @Transactional
     public void processResult(String evalJobId, AiResponseMessage response) {
@@ -47,23 +46,28 @@ public class AiResultProcessingService {
             return;
         }
         try {
+            Long jobMasterId = null;
             switch (aiEvalJob.getAnalysisType()) {
+                case JOBPOSTING -> {
+                    AiJobAnalysisResponse result = objectMapper.treeToValue(response.getData(), AiJobAnalysisResponse.class);
+                    jobMasterId = jobPostingAnalysisService.saveAnalysisResult(aiEvalJob.getId(), result);
+                }
                 case EVALUATION -> {
-                    AiEvaluationResultResponse result = objectMapper.treeToValue(response.getData(), AiEvaluationResultResponse.class);
+                    AiEvaluationResultResponse result = objectMapper.treeToValue(response.getData(),
+                            AiEvaluationResultResponse.class);
                     saveEvaluationResult(aiEvalJob.getJobApplication(), result);
                 }
                 case RESUME -> {
-                    AiResumeAnalysisResponse result = objectMapper.treeToValue(response.getData(), AiResumeAnalysisResponse.class);
+                    AiResumeAnalysisResponse result = objectMapper.treeToValue(response.getData(),
+                            AiResumeAnalysisResponse.class);
                     saveResumeResult(aiEvalJob.getJobApplication(), result);
                 }
                 case PORTFOLIO -> {
-                    AiPortfolioAnalysisResponse result = objectMapper.treeToValue(response.getData(), AiPortfolioAnalysisResponse.class);
+                    AiPortfolioAnalysisResponse result = objectMapper.treeToValue(response.getData(),
+                            AiPortfolioAnalysisResponse.class);
                     savePortfolioResult(aiEvalJob.getJobApplication(), result);
                 }
                 case COMPARISON -> {
-                    // COMPARISON 타입은 my + competitor 두 지원이 모두 필요.
-                    // AiEvalJob 생성 시 competitorApplication을 함께 저장해두었으므로
-                    // 콜백 수신 시점에 별도 조회 없이 바로 저장 가능.
                     AiCompareResponse result = objectMapper.treeToValue(response.getData(), AiCompareResponse.class);
                     saveComparisonResult(aiEvalJob.getJobApplication(), aiEvalJob.getCompetitorApplication(), result);
                 }
@@ -72,24 +76,28 @@ public class AiResultProcessingService {
             aiEvalJob.complete();
             aiEvalJobRepository.save(aiEvalJob);
             log.info("AI 분석 완료 처리 - evalJobId: {}, type: {}", evalJobId, aiEvalJob.getAnalysisType());
-            Long userId = aiEvalJob.getJobApplication().getUser().getUserId();
-            String company = aiEvalJob.getJobApplication().getJobMaster().getCompany().getName();
-            String position = aiEvalJob.getJobApplication().getJobMaster().getJobTitle();
-            String jobPostingTitleStr = company + "(" + position + ")";
-            Long applicationId = aiEvalJob.getJobApplication().getId();
-            String notifType = switch (aiEvalJob.getAnalysisType()) {
-                case EVALUATION ->  "AI_EVAL_COMPLETE";
-                case RESUME -> "RESUME_COMPLETE";
-                case PORTFOLIO -> "PORTFOLIO_COMPLETE";
-                case COMPARISON -> "COMPARISON_COMPLETE";
-                default -> "ANALYSIS_COMPLETE";
-            };
 
-            try {
-                notificationService.createAndPush(userId, notifType, jobPostingTitleStr, applicationId);
-            } catch (Exception e) {
-                log.error("알림 발송 중 오류 발생 (결과 저장에는 영향 없음)", e);
+            // JOBPOSTING은 jobApplication이 null이므로 requestedBy에서 userId를 가져와야 함 (NPE 방지)
+            Long userId = aiEvalJob.getRequestedBy().getUserId();
+
+            if (aiEvalJob.getAnalysisType() == AnalysisType.JOBPOSTING) {
+                notificationService.createAndPush(userId, "JOB_POSTING_COMPLETE", "채용공고 분석이 완료되었습니다.", jobMasterId);
+            } else {
+                JobApplication app = aiEvalJob.getJobApplication();
+                String company = app.getJobMaster().getCompany().getName();
+                String position = app.getJobMaster().getJobTitle();
+                String jobPostingTitleStr = company + "(" + position + ")";
+
+                String notifType = switch (aiEvalJob.getAnalysisType()) {
+                    case EVALUATION -> "AI_EVAL_COMPLETE";
+                    case RESUME -> "RESUME_COMPLETE";
+                    case PORTFOLIO -> "PORTFOLIO_COMPLETE";
+                    case COMPARISON -> "COMPARISON_COMPLETE";
+                    default -> "ANALYSIS_COMPLETE";
+                };
+                notificationService.createAndPush(userId, notifType, jobPostingTitleStr, app.getId());
             }
+
         } catch (Exception e) {
             log.error("AI 결과 저장 실패 - evalJobId: {}", evalJobId, e);
             aiEvalJob.fail(e.getMessage());
@@ -98,41 +106,36 @@ public class AiResultProcessingService {
     }
 
     private void saveComparisonResult(JobApplication myApplication,
-                                       JobApplication competitorApplication,
-                                       AiCompareResponse result) {
+            JobApplication competitorApplication,
+            AiCompareResponse result) {
         List<ComparisonMetric> metrics = result.getComparisonMetrics().stream()
                 .map(m -> new ComparisonMetric(m.getName(), m.getMyScore(), m.getCompetitorScore()))
                 .collect(Collectors.toList());
 
-        // UNIQUE 제약(my_application_id, competitor_application_id)으로
-        // 동일 조합 중복 저장은 DB 레벨에서 방지됨
         aiApplicantComparisonRepository.findByMyApplication_IdAndCompetitorApplication_Id(
-                myApplication.getId(), competitorApplication.getId()
-        ).ifPresentOrElse(
-                existing -> log.info("비교 결과 이미 존재, 저장 생략: myApplicationId={}, competitorApplicationId={}",
-                        myApplication.getId(), competitorApplication.getId()),
-                () -> {
-                    AiApplicantComparison comparison = AiApplicantComparison.builder()
-                            .jobMaster(myApplication.getJobMaster())
-                            .myApplication(myApplication)
-                            .competitorApplication(competitorApplication)
-                            .comparisonMetrics(metrics)
-                            .strengthsReport(result.getStrengthsReport())
-                            .weaknessesReport(result.getWeaknessesReport())
-                            .build();
-                    aiApplicantComparisonRepository.save(comparison);
-                    log.info("AI 비교 결과 저장 완료: myApplicationId={}, competitorApplicationId={}",
-                            myApplication.getId(), competitorApplication.getId());
-                }
-        );
+                myApplication.getId(), competitorApplication.getId()).ifPresentOrElse(
+                        existing -> log.info("비교 결과 이미 존재, 저장 생략: myApplicationId={}, competitorApplicationId={}",
+                                myApplication.getId(), competitorApplication.getId()),
+                        () -> {
+                            AiApplicantComparison comparison = AiApplicantComparison.builder()
+                                    .jobMaster(myApplication.getJobMaster())
+                                    .myApplication(myApplication)
+                                    .competitorApplication(competitorApplication)
+                                    .comparisonMetrics(metrics)
+                                    .strengthsReport(result.getStrengthsReport())
+                                    .weaknessesReport(result.getWeaknessesReport())
+                                    .build();
+                            aiApplicantComparisonRepository.save(comparison);
+                            log.info("AI 비교 결과 저장 완료: myApplicationId={}, competitorApplicationId={}",
+                                    myApplication.getId(), competitorApplication.getId());
+                        });
     }
 
     private void saveEvaluationResult(JobApplication application, AiEvaluationResultResponse result) {
-
         List<EvaluationCriteria> criteria = result.getEvaluationCriteria() != null
                 ? result.getEvaluationCriteria().stream()
-                .map(c -> new EvaluationCriteria(c.getName(), c.getDescription()))
-                .collect(Collectors.toList())
+                        .map(c -> new EvaluationCriteria(c.getName(), c.getDescription()))
+                        .collect(Collectors.toList())
                 : null;
 
         List<EvaluationScore> evaluationScores = result.getCompetencyScores().stream()
