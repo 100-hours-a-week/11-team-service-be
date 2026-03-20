@@ -28,10 +28,7 @@ public class SseEmitterRegistry {
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L);
         emitters.put(userId, emitter);
 
-        emitter.onCompletion(() -> emitters.remove(userId, emitter));
-        emitter.onTimeout(() -> emitters.remove(userId, emitter));
-        emitter.onError((e) -> emitters.remove(userId, emitter));
-
+        // 초기 연결 성공 메시지 전송 (연결 유지를 위함)
         try {
             synchronized (emitter) {
                 emitter.send(SseEmitter.event()
@@ -41,6 +38,10 @@ public class SseEmitterRegistry {
         } catch (Exception e) {
             emitters.remove(userId, emitter);
         }
+
+        emitter.onCompletion(() -> emitters.remove(userId, emitter));
+        emitter.onTimeout(() -> emitters.remove(userId, emitter));
+        emitter.onError((e) -> emitters.remove(userId, emitter));
 
         return emitter;
     }

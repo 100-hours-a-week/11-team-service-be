@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 
 import com.thunder11.scuad.infra.ai.dto.response.*;
 import com.thunder11.scuad.jobposting.domain.type.AnalysisType;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,7 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.thunder11.scuad.infra.rabbitmq.dto.AiResponseMessage;
 import com.thunder11.scuad.jobposting.domain.*;
 import com.thunder11.scuad.jobposting.repository.*;
-import com.thunder11.scuad.notification.service.NotificationService;
+import com.thunder11.scuad.notification.event.AiAnalysisCompleteEvent;
 
 @Slf4j
 @Service
@@ -30,7 +31,7 @@ public class AiResultProcessingService {
     private final AiApplicantComparisonRepository aiApplicantComparisonRepository;
     private final JobMasterRepository jobMasterRepository;
     private final ObjectMapper objectMapper;
-    private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
     private final JobPostingAnalysisService jobPostingAnalysisService;
 
     @Transactional
@@ -81,7 +82,7 @@ public class AiResultProcessingService {
             Long userId = aiEvalJob.getRequestedBy().getUserId();
 
             if (aiEvalJob.getAnalysisType() == AnalysisType.JOBPOSTING) {
-                notificationService.createAndPush(userId, "JOB_POSTING_COMPLETE", "채용공고 분석이 완료되었습니다.", jobMasterId);
+                eventPublisher.publishEvent(new AiAnalysisCompleteEvent(userId, "JOB_POSTING_COMPLETE", "채용공고 분석이 완료되었습니다.", jobMasterId));
             } else {
                 JobApplication app = aiEvalJob.getJobApplication();
                 String company = app.getJobMaster().getCompany().getName();
@@ -95,7 +96,7 @@ public class AiResultProcessingService {
                     case COMPARISON -> "COMPARISON_COMPLETE";
                     default -> "ANALYSIS_COMPLETE";
                 };
-                notificationService.createAndPush(userId, notifType, jobPostingTitleStr, app.getId());
+                eventPublisher.publishEvent(new AiAnalysisCompleteEvent(userId, notifType, jobPostingTitleStr, app.getId()));
             }
 
         } catch (Exception e) {
@@ -148,6 +149,8 @@ public class AiResultProcessingService {
             jobMasterRepository.save(jobMaster);
         }
 
+        String formattedFeedback = formatToMarkdown(result.getFeedbackDetail());
+
         Optional<AiApplicantEvaluation> existingOpt = aiApplicationEvaluationRepository
                 .findByJobApplicationId(application.getId());
         if (existingOpt.isPresent()) {
@@ -155,62 +158,75 @@ public class AiResultProcessingService {
             existing.updateEvaluation(
                     result.getOverallScore(),
                     result.getOneLineReview(),
-                    result.getFeedbackDetail(),
+                    formattedFeedback,
                     evaluationScores);
             aiApplicationEvaluationRepository.save(existing);
-            log.info("AI 평가 결과 업데이트 완료: ApplicationId={}", application.getId());
+            log.info("AI 평가 결과 업데이트 완료 (가공 적용): ApplicationId={}", application.getId());
         } else {
             AiApplicantEvaluation evaluation = AiApplicantEvaluation.builder()
                     .jobApplication(application)
                     .overallScore(result.getOverallScore())
                     .oneLineReview(result.getOneLineReview())
-                    .feedbackDetail(result.getFeedbackDetail())
+                    .feedbackDetail(formattedFeedback)
                     .comparisonScores(evaluationScores)
                     .build();
 
             aiApplicationEvaluationRepository.save(evaluation);
-            log.info("AI 평가 결과 신규 저장 완료: {}", application.getId());
+            log.info("AI 평가 결과 신규 저장 완료 (가공 적용): {}", application.getId());
         }
     }
 
     private void saveResumeResult(JobApplication application, AiResumeAnalysisResponse result) {
+        String formattedReport = formatToMarkdown(result.getAiAnalysisReport());
         aiResumeAnalysisRepository.findByJobApplicationId(application.getId())
                 .ifPresentOrElse(
                         existing -> {
-                            existing.update(result.getAiAnalysisReport(), result.getJobFitScore(),
+                            existing.update(formattedReport, result.getJobFitScore(),
                                     result.getExperienceClarityScore(), result.getReadabilityScore());
                             aiResumeAnalysisRepository.save(existing);
-                            log.info("이력서 분석 결과 업데이트 완료: ApplicationId={}", application.getId());
+                            log.info("이력서 분석 결과 업데이트 완료 (가공 적용): ApplicationId={}", application.getId());
                         }, () -> {
                             aiResumeAnalysisRepository.save(AiResumeAnalysis.builder()
                                     .jobApplication(application)
-                                    .aiAnalysisReport(result.getAiAnalysisReport())
+                                    .aiAnalysisReport(formattedReport)
                                     .jobFitScore(result.getJobFitScore())
                                     .experienceClarityScore(result.getExperienceClarityScore())
                                     .readabilityScore(result.getReadabilityScore())
                                     .build());
-                            log.info("이력서 분석 결과 신규 저장 완료: ApplicationId={}", application.getId());
+                            log.info("이력서 분석 결과 신규 저장 완료 (가공 적용): ApplicationId={}", application.getId());
                         });
     }
 
     private void savePortfolioResult(JobApplication application, AiPortfolioAnalysisResponse result) {
+        String formattedReport = formatToMarkdown(result.getAiAnalysisReport());
         aiPortfolioAnalysisRepository.findByJobApplicationId(application.getId())
                 .ifPresentOrElse(
                         existing -> {
-                            existing.update(result.getAiAnalysisReport(), result.getProblemSolvingScore(),
+                            existing.update(formattedReport, result.getProblemSolvingScore(),
                                     result.getContributionClarityScore(), result.getTechnicalDepthScore());
                             aiPortfolioAnalysisRepository.save(existing);
-                            log.info("포트폴리오 분석 결과 업데이트 완료: ApplicationId={}", application.getId());
+                            log.info("포트폴리오 분석 결과 업데이트 완료 (가공 적용): ApplicationId={}", application.getId());
                         },
                         () -> {
                             aiPortfolioAnalysisRepository.save(AiPortfolioAnalysis.builder()
                                     .jobApplication(application)
-                                    .aiAnalysisReport(result.getAiAnalysisReport())
+                                    .aiAnalysisReport(formattedReport)
                                     .problemSolvingScore(result.getProblemSolvingScore())
                                     .contributionClarityScore(result.getContributionClarityScore())
                                     .technicalDepthScore(result.getTechnicalDepthScore())
                                     .build());
-                            log.info("포트폴리오 분석 결과 신규 저장 완료: ApplicationId={}", application.getId());
+                            log.info("포트폴리오 분석 결과 신규 저장 완료 (가공 적용): ApplicationId={}", application.getId());
                         });
+    }
+
+    /**
+     * AI가 생성한 줄글 텍스트를 마크다운 형식으로 가공하여 가독성을 높입니다.
+     */
+    private String formatToMarkdown(String text) {
+        if (text == null || text.isBlank()) return text;
+
+        // 텍스트 가공이 가독성을 오히려 해친다는 피드백에 따라
+        // 문장 단위 줄바꿈만 수행하는 단순 논리로 회기합니다.
+        return text.replaceAll("\\. (?=[가-힣\\[])", ".\n\n").trim();
     }
 }
