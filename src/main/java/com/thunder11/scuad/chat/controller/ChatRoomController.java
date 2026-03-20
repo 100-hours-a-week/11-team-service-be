@@ -251,6 +251,33 @@ public class ChatRoomController {
         );
     }
 
+    // 채팅방 멤버 단건 조회
+    // 추가 근거: 프론트에서 특정 멤버 정보를 개별 조회해야 하는 케이스(예: 프로필 진입)가 존재하고,
+    //           기존 목록 API만으로는 단건 갱신이 불필요하게 무거움.
+    //           500 오류 재현 원인이 이 핸들러의 미구현이었으므로 신규 추가.
+    @GetMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}")
+    public ApiResponse<ChatRoomMemberResponse> getChatRoomMember(
+            @PathVariable Long chatRoomId,
+            @PathVariable Long chatRoomMemberId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("GET /api/v1/chat-rooms/{}/members/{} - userId={}",
+                chatRoomId, chatRoomMemberId, userPrincipal.getUserId());
+
+        ChatRoomMemberResponse response = chatRoomService.getChatRoomMember(
+                chatRoomId,
+                userPrincipal.getUserId(),
+                chatRoomMemberId
+        );
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "SUCCESS",
+                "멤버 단건 조회 성공",
+                response
+        );
+    }
+
     // 채팅방 퇴장
     @DeleteMapping("/chat-rooms/{chatRoomId}/members/me")
     public ApiResponse<Void> leaveChatRoom(
