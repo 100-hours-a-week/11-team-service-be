@@ -87,7 +87,18 @@ public class ChatMemberComparisonService {
         User requestUser = userRepository.findById(requestUserId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
 
-        // 8. AiEvalJob 생성
+        // 8. 중복 요청 방지
+        //    이미 PROCESSING 중인 비교 작업이 있으면 중복 요청을 막는다.
+        //    사용자가 버튼을 여러 번 누르는 경우 AiEvalJob이 중복 생성되는 것을 방지하기 위함.
+        aiEvalJobRepository.findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(
+                myApplication.getId(), AnalysisType.COMPARISON)
+                .ifPresent(existingJob -> {
+                    if (existingJob.getStatus() == AiJobStatus.PROCESSING) {
+                        throw new ApiException(ErrorCode.CONFLICT, "이미 진행 중인 비교 분석이 있습니다.");
+                    }
+                });
+
+        // 9. AiEvalJob 생성
         //    COMPARISON 타입은 콜백 수신 시 my + competitor 두 지원 ID가 모두 필요하므로
         //    competitorApplication을 함께 저장한다.
         //    다른 타입과 동일하게 PROCESSING 상태로 바로 생성하여 불필요한 save 호출을 줄인다.
