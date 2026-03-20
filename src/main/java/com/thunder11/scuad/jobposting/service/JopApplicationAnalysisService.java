@@ -64,7 +64,10 @@ public class JopApplicationAnalysisService {
             switch (recentJob.getStatus()) {
                 case PENDING:
                 case PROCESSING:
-                    throw new ApiException(ErrorCode.ACCEPTED, "AI가 현재 이력서를 분석 중입니다.");
+                    return AiEvaluationResultResponse.builder()
+                            .jobApplicationId(applicationId)
+                            .status("PROCESSING")
+                            .build();
                 case FAILED:
                     throw new ApiException(ErrorCode.INTERNAL_ERROR, "분석 중 오류가 발생했습니다: " + recentJob.getErrorMessage());
                 case SUCCEEDED:
@@ -76,14 +79,18 @@ public class JopApplicationAnalysisService {
                 .findByJobApplicationId(applicationId);
 
         if (evaluationIsReady.isPresent()) {
-            return AiEvaluationResultResponse.from(evaluationIsReady.get());
+            AiEvaluationResultResponse response = AiEvaluationResultResponse.from(evaluationIsReady.get());
+            return response;
         }
 
         if (recentJob != null && recentJob.getStatus() == AiJobStatus.SUCCEEDED) {
             throw new ApiException(ErrorCode.INTERNAL_ERROR, "분석은 완료되었으나 결과 데이터가 없습니다.");
         }
 
-        throw new ApiException(ErrorCode.ACCEPTED, "AI 분석 대기 중입니다.");
+        return AiEvaluationResultResponse.builder()
+                .jobApplicationId(applicationId)
+                .status("PENDING")
+                .build();
     }
 
     @Transactional(readOnly = true)
