@@ -87,19 +87,29 @@ public class ChatMemberComparisonService {
         User requestUser = userRepository.findById(requestUserId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
 
-        // 8. AiEvalJob 생성
+        // 8. 중복 요청 방지
+        //    이미 PROCESSING 중인 비교 작업이 있으면 중복 요청을 막는다.
+        //    사용자가 버튼을 여러 번 누르는 경우 AiEvalJob이 중복 생성되는 것을 방지하기 위함.
+        aiEvalJobRepository.findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(
+                myApplication.getId(), AnalysisType.COMPARISON)
+                .ifPresent(existingJob -> {
+                    if (existingJob.getStatus() == AiJobStatus.PROCESSING) {
+                        throw new ApiException(ErrorCode.CONFLICT, "이미 진행 중인 비교 분석이 있습니다.");
+                    }
+                });
+
+        // 9. AiEvalJob 생성
         //    COMPARISON 타입은 콜백 수신 시 my + competitor 두 지원 ID가 모두 필요하므로
-        //    competitorApplication을 함께 저장한다
+        //    competitorApplication을 함께 저장한다.
+        //    다른 타입과 동일하게 PROCESSING 상태로 바로 생성하여 불필요한 save 호출을 줄인다.
         AiEvalJob evalJob = AiEvalJob.builder()
                 .jobApplication(myApplication)
                 .competitorApplication(competitorApplication)
                 .requestedBy(requestUser)
                 .analysisType(AnalysisType.COMPARISON)
-                .status(AiJobStatus.PENDING)
+                .status(AiJobStatus.PROCESSING)
                 .build();
         AiEvalJob savedJob = aiEvalJobRepository.save(evalJob);
-        savedJob.startProcessing();
-        aiEvalJobRepository.save(savedJob);
 
         // 9. 이벤트 발행
         //    트랜잭션 커밋 후 AiEvaluationWorker의 @TransactionalEventListener(AFTER_COMMIT)가 수신하여 MQ 발행.
@@ -154,14 +164,43 @@ public class ChatMemberComparisonService {
                 .findById(targetMember.getJobApplicationId())
                 .orElseThrow(() -> new ApiException(ErrorCode.JOB_APPLICATION_NOT_FOUND));
 
-        // 6. 비교 결과 조회
-        //    AI 처리가 완료되지 않은 경우 404 반환 → 클라이언트 폴링 유도
+        // 6. AiEvalJob 상태 확인 후 분기
+        //    무조건 404를 반환하던 기존 방식 대신, AiEvalJob 상태에 따라 정확한 응답을 반환한다.
+        //    - PENDING / PROCESSING: AI가 처리 중 → 202
+        //    - FAILED: AI 처리 실패 → 500 (실패 사유 포함)
+        //    - SUCCEEDED: DB에서 결과 조회
+        //    - AiEvalJob 자체가 없음: 비교 요청을 아직 하지 않은 상태 → 404
+        AiEvalJob recentJob = aiEvalJobRepository
+                .findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(
+                        myApplication.getId(), AnalysisType.COMPARISON)
+                .orElse(null);
+
+        if (recentJob != null) {
+            switch (recentJob.getStatus()) {
+                case PENDING, PROCESSING ->
+                        throw new ApiException(ErrorCode.ACCEPTED, "AI가 비교 분석 중입니다. 잠시 후 다시 조회해주세요.");
+                case FAILED ->
+                        throw new ApiException(ErrorCode.INTERNAL_ERROR,
+                                "비교 분석 중 오류가 발생했습니다: " + recentJob.getErrorMessage());
+                case SUCCEEDED -> {}
+            }
+        }
+
+        // 7. 비교 결과 조회
         return aiApplicantComparisonRepository
                 .findByMyApplication_IdAndCompetitorApplication_Id(
                         myApplication.getId(),
                         competitorApplication.getId()
                 )
                 .map(ComparisonResponse::from)
-                .orElseThrow(() -> new ApiException(ErrorCode.COMPARISON_RESULT_NOT_FOUND));
+                .orElseThrow(() -> {
+                    // SUCCEEDED 상태인데 결과가 없는 경우는 비정상 케이스
+                    // 콜백은 수신됐지만 저장 과정에서 문제가 생긴 상황이므로 500으로 처리
+                    if (recentJob != null && recentJob.getStatus() == AiJobStatus.SUCCEEDED) {
+                        return new ApiException(ErrorCode.INTERNAL_ERROR,
+                                "비교 분석은 완료되었으나 결과 데이터가 없습니다.");
+                    }
+                    return new ApiException(ErrorCode.COMPARISON_RESULT_NOT_FOUND);
+                });
     }
 }
