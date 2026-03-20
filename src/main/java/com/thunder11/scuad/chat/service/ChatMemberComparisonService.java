@@ -193,6 +193,14 @@ public class ChatMemberComparisonService {
                         competitorApplication.getId()
                 )
                 .map(ComparisonResponse::from)
-                .orElseThrow(() -> new ApiException(ErrorCode.COMPARISON_RESULT_NOT_FOUND));
+                .orElseThrow(() -> {
+                    // SUCCEEDED 상태인데 결과가 없는 경우는 비정상 케이스
+                    // 콜백은 수신됐지만 저장 과정에서 문제가 생긴 상황이므로 500으로 처리
+                    if (recentJob != null && recentJob.getStatus() == AiJobStatus.SUCCEEDED) {
+                        return new ApiException(ErrorCode.INTERNAL_ERROR,
+                                "비교 분석은 완료되었으나 결과 데이터가 없습니다.");
+                    }
+                    return new ApiException(ErrorCode.COMPARISON_RESULT_NOT_FOUND);
+                });
     }
 }
