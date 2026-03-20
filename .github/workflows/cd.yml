@@ -80,7 +80,6 @@ jobs:
       # 4. K8s 매니페스트 업데이트 (ArgoCD 트리거)
       # ----------------------------
       - name: Update K8s manifest
-        if: github.ref_name == 'develop'
         run: |
           git clone https://x-access-token:${{ secrets.CLOUD_REPO_PAT }}@github.com/100-hours-a-week/11-team-service-cloud.git /tmp/cloud-repo
           cd /tmp/cloud-repo
