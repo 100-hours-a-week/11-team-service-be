@@ -25,10 +25,10 @@ public class Notification {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "title", nullable = false, length = 25)
+    @Column(name = "title", nullable = false, length = 100)
     private String title;
 
-    @Column(name = "body", nullable = false, length = 80)
+    @Column(name = "body", nullable = false, length = 255)
     private String body;
 
     @Column(name = "type", nullable = false, length = 30)

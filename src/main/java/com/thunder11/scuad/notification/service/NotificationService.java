@@ -3,6 +3,7 @@ package com.thunder11.scuad.notification.service;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
@@ -13,13 +14,28 @@ import com.thunder11.scuad.notification.domain.Notification;
 import com.thunder11.scuad.notification.dto.request.SseNotificationEvent;
 import com.thunder11.scuad.notification.dto.response.NotificationResponse;
 import com.thunder11.scuad.notification.repository.NotificationRepository;
+import com.thunder11.scuad.notification.event.AiAnalysisCompleteEvent;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final SseEmitterRegistry sseEmitterRegistry;
     private final UserRepository userRepository;
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleAiAnalysisComplete(AiAnalysisCompleteEvent event) {
+        try {
+            createAndPush(event.userId(), event.type(), event.jobPostingTitle(), event.applicationId());
+        } catch (Exception e) {
+            log.error("알림 발송 오류: {}", e.getMessage());
+        }
+    }
 
     @Transactional
     public void createAndPush(Long userId, String type, String jobPostingTitle, Long applicationId) {
