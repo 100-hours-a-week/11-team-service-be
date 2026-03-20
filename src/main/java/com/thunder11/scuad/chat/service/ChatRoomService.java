@@ -741,6 +741,67 @@ public class ChatRoomService {
 
         return ChatRoomMemberListResponse.of(memberResponses);
     }
+    // 채팅방 멤버 단건 조회
+    // 추가 근거: GET /api/v1/chat-rooms/{chatRoomId}/members/{chatRoomMemberId} 핸들러 신규 구현에 따라
+    //           목록 조회(getChatRoomMembers)와 동일한 권한 검증·presigned URL 생성 패턴을 단건에 적용
+    //           chatRoomId 교차 검증을 포함해 다른 방 멤버를 조회하는 부정 접근 방어
+    public ChatRoomMemberResponse getChatRoomMember(Long chatRoomId, Long requestUserId, Long chatRoomMemberId) {
+        log.info("채팅방 멤버 단건 조회 시작: chatRoomId={}, requestUserId={}, chatRoomMemberId={}",
+                chatRoomId, requestUserId, chatRoomMemberId);
+
+        // 1. 채팅방 존재 확인
+        chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 요청자가 채팅방 멤버인지 확인 (권한 검증 — getChatRoomMembers와 동일한 패턴)
+        chatRoomMemberRepository.findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, requestUserId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+
+        // 3. 대상 멤버 조회 (강퇴되지 않은 활성 멤버만)
+        ChatRoomMember member = chatRoomMemberRepository
+                .findByChatRoomMemberIdAndKickedAtIsNull(chatRoomMemberId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_MEMBER_NOT_FOUND));
+
+        // 4. chatRoomId 교차 검증: 해당 멤버가 요청 chatRoom 소속인지 확인
+        //    의도: /chat-rooms/1/members/2 호출 시 memberId=2가 chatRoom=99 소속이어도 조회 가능한
+        //          보안 취약점을 차단
+        if (!member.getChatRoomId().equals(chatRoomId)) {
+            log.warn("chatRoomId 불일치: 요청 chatRoomId={}, 실제 chatRoomId={}, chatRoomMemberId={}",
+                    chatRoomId, member.getChatRoomId(), chatRoomMemberId);
+            throw new ApiException(ErrorCode.CHAT_MEMBER_NOT_FOUND);
+        }
+
+        // 5. 닉네임 + profileImageFileId 조회 (목록 조회와 동일 방식)
+        List<Long> userIds = List.of(member.getUserId());
+        Map<Long, String> nicknameMap = new java.util.HashMap<>();
+        Map<Long, Long> profileImageFileIdMap = new java.util.HashMap<>();
+
+        userRepository.findNicknameAndProfileImageByUserIds(userIds)
+                .forEach(row -> {
+                    Long uid = (Long) row[0];
+                    nicknameMap.put(uid, (String) row[1]);
+                    profileImageFileIdMap.put(uid, (Long) row[2]);
+                });
+
+        // 6. presigned URL 생성 (profileImageFileId가 있는 경우에만)
+        //    만료 10분: 멤버 단건 조회도 목록과 동일한 만료 시간 정책 적용
+        String profileImageUrl = null;
+        Long fileId = profileImageFileIdMap.get(member.getUserId());
+        if (fileId != null) {
+            try {
+                profileImageUrl = s3FileManagementService.generatePresignedUrl(fileId, Duration.ofMinutes(10));
+            } catch (Exception e) {
+                log.warn("프로필 이미지 URL 생성 실패: userId={}, fileId={}", member.getUserId(), fileId);
+            }
+        }
+
+        String nickname = nicknameMap.getOrDefault(member.getUserId(), "알 수 없음");
+        ChatRoomMemberResponse response = ChatRoomMemberResponse.of(member, nickname, profileImageUrl);
+
+        log.info("채팅방 멤버 단건 조회 완료: chatRoomId={}, chatRoomMemberId={}", chatRoomId, chatRoomMemberId);
+        return response;
+    }
+
     // 내가 참여 중인 채팅방 목록 조회
     // 사용자는 본인이 참여 중인 채팅방 리스트를 확인할 수 있어야 함
     // 최신 참여 순으로 정렬하여 활동성 높은 채팅방을 우선 표시
