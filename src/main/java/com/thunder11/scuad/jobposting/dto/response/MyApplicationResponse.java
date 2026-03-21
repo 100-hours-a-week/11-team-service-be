@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import lombok.Builder;
 import lombok.Getter;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.thunder11.scuad.jobposting.domain.JobApplication;
 
 @Getter
@@ -15,15 +16,27 @@ public class MyApplicationResponse {
     private String companyName;
     private String jobTitle;
     private LocalDateTime appliedAt;
-    private Integer overallScore;
-    private boolean isProcessing;
-    private boolean resumeAnalyzed;
-    private boolean portfolioAnalyzed;
-    private boolean resumeRegistered;
-    private boolean portfolioRegistered;
 
-    public static MyApplicationResponse from(JobApplication ja, Integer overallScore, boolean isProcessing,
-            boolean resumeAnalyzed, boolean portfolioAnalyzed, boolean resumeRegistered, boolean portfolioRegistered) {
+    @JsonProperty("overallScore")
+    private Integer overallScore;
+
+    @JsonProperty("isProcessing")
+    private Boolean isProcessing;
+
+    @JsonProperty("resumeAnalyzed")
+    private Boolean resumeAnalyzed;
+
+    @JsonProperty("portfolioAnalyzed")
+    private Boolean portfolioAnalyzed;
+
+    @JsonProperty("resumeRegistered")
+    private Boolean resumeRegistered;
+
+    @JsonProperty("portfolioRegistered")
+    private Boolean portfolioRegistered;
+
+    public static MyApplicationResponse from(JobApplication ja, Integer overallScore, Boolean isProcessing,
+            Boolean resumeAnalyzed, Boolean portfolioAnalyzed, Boolean resumeRegistered, Boolean portfolioRegistered) {
         return MyApplicationResponse.builder()
                 .id(ja.getId())
                 .jobMasterId(ja.getJobMaster().getId())
