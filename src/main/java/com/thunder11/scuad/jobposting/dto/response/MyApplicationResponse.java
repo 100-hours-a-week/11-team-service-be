@@ -22,7 +22,8 @@ public class MyApplicationResponse {
     private boolean resumeRegistered;
     private boolean portfolioRegistered;
 
-    public static MyApplicationResponse from(JobApplication ja, Integer overallScore, boolean isProcessing, boolean resumeAnalyzed, boolean portfolioAnalyzed, boolean resumeRegistered, boolean portfolioRegistered) {
+    public static MyApplicationResponse from(JobApplication ja, Integer overallScore, boolean isProcessing,
+            boolean resumeAnalyzed, boolean portfolioAnalyzed, boolean resumeRegistered, boolean portfolioRegistered) {
         return MyApplicationResponse.builder()
                 .id(ja.getId())
                 .jobMasterId(ja.getJobMaster().getId())
