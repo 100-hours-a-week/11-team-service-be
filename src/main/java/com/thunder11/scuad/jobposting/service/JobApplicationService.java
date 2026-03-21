@@ -18,6 +18,7 @@ import com.thunder11.scuad.common.exception.ApiException;
 import com.thunder11.scuad.common.exception.ErrorCode;
 import com.thunder11.scuad.file.domain.FileObject;
 import com.thunder11.scuad.file.service.FileStorageService;
+import com.thunder11.scuad.jobposting.domain.AiApplicantEvaluation;
 import com.thunder11.scuad.jobposting.domain.ApplicationDocument;
 import com.thunder11.scuad.jobposting.domain.JobApplication;
 import com.thunder11.scuad.jobposting.domain.JobMaster;
@@ -82,7 +83,6 @@ public class JobApplicationService {
             analysisService.createEvaluationJob(application.getId(), userId, "PORTFOLIO");
         }
 
-
         return application.getId();
     }
 
@@ -103,9 +103,10 @@ public class JobApplicationService {
         }
         ApplicationDocumentType type = ApplicationDocumentType.valueOf(docType.toUpperCase());
 
-        Optional<ApplicationDocument> existingDoc = applicationDocumentRepository.findByJobApplication_IdAndDocType(applicationId, type);
+        Optional<ApplicationDocument> existingDoc = applicationDocumentRepository
+                .findByJobApplication_IdAndDocType(applicationId, type);
 
-        if(existingDoc.isPresent()) {
+        if (existingDoc.isPresent()) {
             return updateDocument(existingDoc.get(), file, docType);
         } else {
             return saveDocument(jobApplication, docType, file);
@@ -114,22 +115,37 @@ public class JobApplicationService {
 
     @Transactional(readOnly = true)
     public List<MyApplicationResponse> getMyApplications(Long userId, String keyword) {
-        return jobApplicationRepository.findMyApplication(userId, keyword)
+        List<JobApplication> applications = jobApplicationRepository.findMyApplication(userId, keyword);
+        if (applications.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> applicationIds = applications.stream().map(JobApplication::getId).toList();
+
+        Map<Long, Integer> scoreMap = aiApplicationEvaluationRepository.findAllByJobApplicationIdIn(applicationIds)
                 .stream()
+                .collect(Collectors.toMap(e -> e.getJobApplication().getId(), AiApplicantEvaluation::getOverallScore,
+                        (a, b) -> a));
+
+        List<Long> resumeAnalyzedIds = aiResumeAnalysisRepository.findAllByJobApplicationIdIn(applicationIds)
+                .stream().map(e -> e.getJobApplication().getId()).toList();
+        List<Long> portfolioAnalyzedIds = aiPortfolioAnalysisRepository.findAllByJobApplicationIdIn(applicationIds)
+                .stream().map(e -> e.getJobApplication().getId()).toList();
+
+        return applications.stream()
                 .map(ja -> {
-                    Integer score = aiApplicationEvaluationRepository.findByJobApplicationId(ja.getId())
-                            .map(eval -> eval.getOverallScore())
-                            .orElse(null);
-                    boolean resumeAnalyzed = aiResumeAnalysisRepository.findByJobApplicationId(ja.getId()).isPresent();
-                    boolean portfolioAnalyzed = aiPortfolioAnalysisRepository.findByJobApplicationId(ja.getId()).isPresent();
-                    
+                    Integer score = scoreMap.get(ja.getId());
+                    boolean resumeAnalyzed = resumeAnalyzedIds.contains(ja.getId());
+                    boolean portfolioAnalyzed = portfolioAnalyzedIds.contains(ja.getId());
+
                     boolean resumeRegistered = ja.getApplicationDocuments().stream()
                             .anyMatch(d -> d.getDocType() == ApplicationDocumentType.RESUME);
                     boolean portfolioRegistered = ja.getApplicationDocuments().stream()
                             .anyMatch(d -> d.getDocType() == ApplicationDocumentType.PORTFOLIO);
-                            
+
                     boolean isProcessing = analysisService.isProcessing(ja.getId());
-                    return MyApplicationResponse.from(ja, score, isProcessing, resumeAnalyzed, portfolioAnalyzed, resumeRegistered, portfolioRegistered);
+                    return MyApplicationResponse.from(ja, score, isProcessing, resumeAnalyzed, portfolioAnalyzed,
+                            resumeRegistered, portfolioRegistered);
                 })
                 .toList();
     }

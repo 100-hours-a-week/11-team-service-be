@@ -31,9 +31,10 @@ public interface JobApplicationRepository extends JpaRepository<JobApplication, 
         @Query("SELECT ja FROM JobApplication ja LEFT JOIN FETCH ja.applicationDocuments WHERE ja.id = :id")
         Optional<JobApplication> findByIdWithDocuments(@Param("id") Long id);
 
-        @Query("SELECT ja FROM JobApplication ja " +
+        @Query("SELECT DISTINCT ja FROM JobApplication ja " +
                         "JOIN FETCH ja.jobMaster jm " +
                         "JOIN FETCH jm.company c " +
+                        "LEFT JOIN FETCH ja.applicationDocuments " +
                         "WHERE ja.user.userId = :userId " +
                         "AND (:keyword IS NULL OR c.name LIKE %:keyword% OR jm.jobTitle LIKE %:keyword%) " +
                         "ORDER BY ja.createdAt DESC")
