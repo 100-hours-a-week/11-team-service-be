@@ -13,6 +13,7 @@ public class AiPortfolioAnalysisResponse {
     private String problemSolvingScore;
     private String contributionClarityScore;
     private String technicalDepthScore;
+    private Boolean isProcessing;
 
     public static AiPortfolioAnalysisResponse from(AiPortfolioAnalysis entity) {
         return AiPortfolioAnalysisResponse.builder()
