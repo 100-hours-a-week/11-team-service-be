@@ -24,6 +24,9 @@ import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.type.ApplicationDocumentType;
 import com.thunder11.scuad.jobposting.domain.type.ApplicationStatus;
 import com.thunder11.scuad.jobposting.dto.response.MyApplicationResponse;
+import com.thunder11.scuad.jobposting.repository.AiApplicationEvaluationRepository;
+import com.thunder11.scuad.jobposting.repository.AiPortfolioAnalysisRepository;
+import com.thunder11.scuad.jobposting.repository.AiResumeAnalysisRepository;
 import com.thunder11.scuad.jobposting.repository.ApplicationDocumentRepository;
 import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
 import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
@@ -40,6 +43,9 @@ public class JobApplicationService {
     private final ApplicationDocumentRepository applicationDocumentRepository;
     private final FileStorageService fileStorageService;
     private final JopApplicationAnalysisService analysisService;
+    private final AiApplicationEvaluationRepository aiApplicationEvaluationRepository;
+    private final AiResumeAnalysisRepository aiResumeAnalysisRepository;
+    private final AiPortfolioAnalysisRepository aiPortfolioAnalysisRepository;
 
     @Transactional
     public Long apply(Long userId, Long jobMasterId, MultipartFile resume, MultipartFile portfolio) {
@@ -72,8 +78,9 @@ public class JobApplicationService {
         analysisService.createEvaluationJob(application.getId(), userId, "EVALUATION");
         analysisService.createEvaluationJob(application.getId(), userId, "RESUME");
 
-        if (portfolio != null && !portfolio.isEmpty()) {}
-        analysisService.createEvaluationJob(application.getId(), userId, "PORTFOLIO");
+        if (portfolio != null && !portfolio.isEmpty()) {
+            analysisService.createEvaluationJob(application.getId(), userId, "PORTFOLIO");
+        }
 
 
         return application.getId();
@@ -109,7 +116,21 @@ public class JobApplicationService {
     public List<MyApplicationResponse> getMyApplications(Long userId, String keyword) {
         return jobApplicationRepository.findMyApplication(userId, keyword)
                 .stream()
-                .map(MyApplicationResponse::from)
+                .map(ja -> {
+                    Integer score = aiApplicationEvaluationRepository.findByJobApplicationId(ja.getId())
+                            .map(eval -> eval.getOverallScore())
+                            .orElse(null);
+                    boolean resumeAnalyzed = aiResumeAnalysisRepository.findByJobApplicationId(ja.getId()).isPresent();
+                    boolean portfolioAnalyzed = aiPortfolioAnalysisRepository.findByJobApplicationId(ja.getId()).isPresent();
+                    
+                    boolean resumeRegistered = ja.getApplicationDocuments().stream()
+                            .anyMatch(d -> d.getDocType() == ApplicationDocumentType.RESUME);
+                    boolean portfolioRegistered = ja.getApplicationDocuments().stream()
+                            .anyMatch(d -> d.getDocType() == ApplicationDocumentType.PORTFOLIO);
+                            
+                    boolean isProcessing = analysisService.isProcessing(ja.getId());
+                    return MyApplicationResponse.from(ja, score, isProcessing, resumeAnalyzed, portfolioAnalyzed, resumeRegistered, portfolioRegistered);
+                })
                 .toList();
     }
 
