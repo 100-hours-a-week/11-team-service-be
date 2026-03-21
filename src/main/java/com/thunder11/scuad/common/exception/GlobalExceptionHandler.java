@@ -35,7 +35,7 @@ public class GlobalExceptionHandler {
                                 .body(ApiResponse.of(
                                                 ec.getStatus().value(),
                                                 ec.getCode(),
-                                                ec.getMessage(),
+                                                e.getMessage(),
                                                 null));
         }
 

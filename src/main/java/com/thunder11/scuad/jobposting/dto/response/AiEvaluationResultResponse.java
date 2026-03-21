@@ -21,6 +21,7 @@ public class AiEvaluationResultResponse {
     private List<EvaluationScore> comparisonScores;
     private String status;
     private LocalDateTime analyzedAt;
+    private Boolean isProcessing;
 
 
     public static AiEvaluationResultResponse from(AiApplicantEvaluation entity) {

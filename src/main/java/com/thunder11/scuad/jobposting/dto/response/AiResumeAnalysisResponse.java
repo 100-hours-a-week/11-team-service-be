@@ -13,6 +13,7 @@ public class AiResumeAnalysisResponse {
     private String jobFitScore;
     private String experienceClarityScore;
     private String readabilityScore;
+    private Boolean isProcessing;
 
     public static AiResumeAnalysisResponse from(AiResumeAnalysis entity) {
         return AiResumeAnalysisResponse.builder()
