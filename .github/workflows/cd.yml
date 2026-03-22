@@ -3,7 +3,7 @@ name: Backend CD
 on:
   workflow_dispatch: # 수동 실행
   push:
-    branches: [develop, main]
+    branches: [develop, main, release]
     paths-ignore:
       - "**.md"
       - ".github/**"
@@ -31,36 +31,42 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Getting deploy target & image tag 
+      - name: Getting deploy target & image tag
         id: meta
+        shell: bash
         run: |
-          if [[ "${{ env.TARGET_BRANCH}}" == "main" ]]; then
+          set -euo pipefail
+
+          if [[ "${{ env.TARGET_BRANCH }}" == "main" ]]; then
             PROFILE="prod"
             ENV_TAG_VALUE="prod"
             COMPOSE_S3_URI="${{ secrets.PROD_COMPOSE_S3_URI }}"
             ENV_PARAM_NAME="${{ secrets.PROD_ENV_PARAM_NAME }}"
+            IMAGE_TAG="main-latest"
+          elif [[ "${{ env.TARGET_BRANCH }}" == "release" ]]; then
+            PROFILE="staging"
+            ENV_TAG_VALUE="staging"
+            COMPOSE_S3_URI="${{ secrets.STAGING_COMPOSE_S3_URI }}"
+            ENV_PARAM_NAME="${{ secrets.STAGING_ENV_PARAM_NAME }}"
+            IMAGE_TAG="staging-latest"
           else
             PROFILE="dev"
             ENV_TAG_VALUE="dev"
             COMPOSE_S3_URI="${{ secrets.DEV_COMPOSE_S3_URI }}"
             ENV_PARAM_NAME="${{ secrets.DEV_ENV_PARAM_NAME }}"
+            IMAGE_TAG="develop-latest"
           fi
 
-          if [[ -z "$COMPOSE_S3_URI" ]]; then
-            echo "::error::COMPOSE_S3_URI is empty. Set DEV_COMPOSE_S3_URI / PROD_COMPOSE_S3_URI secrets. (example: s3://bucket/be/docker-compose.yml)"
-            exit 1
-          fi
+          [[ -n "$COMPOSE_S3_URI" ]] || { echo "::error::COMPOSE_S3_URI is empty"; exit 1; }
+          [[ -n "$ENV_PARAM_NAME" ]] || { echo "::error::ENV_PARAM_NAME is empty"; exit 1; }
 
-          if [[ -z "$ENV_PARAM_NAME" ]]; then
-            echo "::error::ENV_PARAM_NAME is empty. Set DEV_ENV_PARAM_NAME / PROD_ENV_PARAM_NAME secrets. (example: /staging/be/DOT_ENV)"
-            exit 1
-          fi
-
-          echo "profile=$PROFILE" >> $GITHUB_OUTPUT
-          echo "environment_tag_value=$ENV_TAG_VALUE" >> $GITHUB_OUTPUT
-          echo "compose_s3_uri=$COMPOSE_S3_URI" >> $GITHUB_OUTPUT
-          echo "env_param_name=$ENV_PARAM_NAME" >> $GITHUB_OUTPUT
-          echo "image_tag=${{ env.TARGET_BRANCH }}-latest" >> $GITHUB_OUTPUT
+          {
+            echo "profile=$PROFILE"
+            echo "environment_tag_value=$ENV_TAG_VALUE"
+            echo "compose_s3_uri=$COMPOSE_S3_URI"
+            echo "env_param_name=$ENV_PARAM_NAME"
+            echo "image_tag=$IMAGE_TAG"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Deploy with SSM
         shell: bash
@@ -139,17 +145,16 @@ jobs:
           set -eux
 
           HEALTH_SCRIPT=$(cat <<'SSM'
+          #!/usr/bin/env bash
           set -eux
 
           cd /home/ubuntu/backend
 
           echo "Waiting for backend to become healthy..."
           for i in $(seq 1 60); do
-
-            # Container name may differ; find container ID by name filter.
             CID=$(docker ps --filter "name=backend" -q | head -n 1 || true)
 
-            if [[ -n "$CID" ]]; then
+            if [[ -n "${CID:-}" ]]; then
               HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$CID" 2>/dev/null || echo "missing")
               if [[ "$HEALTH" == "healthy" ]]; then
                 echo "Container health: healthy"
@@ -173,7 +178,7 @@ jobs:
           docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" || true
 
           CID=$(docker ps --filter "name=backend" -q | head -n 1 || true)
-          if [[ -n "$CID" ]]; then
+          if [[ -n "${CID:-}" ]]; then
             docker logs --tail 300 "$CID" || true
           else
             echo "backend container not found" >&2
@@ -193,8 +198,9 @@ jobs:
           cmds = [
             "set -eux",
             f'printf %s "{b64}" | base64 -d > /tmp/health.sh',
-            "chmod +x /tmp/health.sh",
-            "/tmp/health.sh",
+            "chmod 700 /tmp/health.sh",
+            # ✅ bash로 강제 실행 (sh에서 [[ ]] 터지는 문제 제거)
+            "bash /tmp/health.sh",
           ]
           print(json.dumps({"commands": cmds}))
           PY
@@ -226,8 +232,10 @@ jobs:
           # 인스턴스별 stdout/stderr 출력
           echo "$INVOCATIONS" | python3 -c 'import json,sys; inv=json.load(sys.stdin); print("\n".join(x["InstanceId"] for x in inv))' | while read -r IID; do
             echo "--- Output for $IID ---"
+            
+            # ✅ Failed인데 stdout/stderr 비는 케이스에서 StatusDetails/ResponseCode가 단서가 됨
             aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$IID" \
-              --query '{Status:Status, StandardOutput:StandardOutputContent, StandardError:StandardErrorContent}' \
+              --query '{Status:Status,StatusDetails:StatusDetails,ResponseCode:ResponseCode,StandardOutput:StandardOutputContent,StandardError:StandardErrorContent}' \
               --output json || true
           done
 
