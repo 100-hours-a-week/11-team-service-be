@@ -20,9 +20,12 @@ import com.thunder11.scuad.jobposting.repository.ApplicationDocumentRepository;
 import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
 import com.thunder11.scuad.file.service.S3FileManagementService;
 import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.thunder11.scuad.notification.event.ChatRoomNotificationEvent;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -55,6 +58,7 @@ public class ChatRoomService {
     private final UserRepository userRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final S3FileManagementService s3FileManagementService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // 사용자의 AI 평가 점수 조회 (private 헬퍼 메서드)
     private Integer getMyScore(Long userId, Long jobMasterId) {
@@ -554,6 +558,11 @@ public class ChatRoomService {
         //           나가기 시도 시 에러를 던지는 대신 채팅방을 자동 종료
         if (member.getRole() == MemberRole.HOST) {
             log.info("방장의 나가기 시도 → 채팅방 자동 종료: chatRoomId={}, userId={}", chatRoomId, userId);
+
+            // 종료 처리 전에 활성 멤버 조회 (chatRoom.close() 이후에도 kicked_at IS NULL 조건은 유지되므로
+            // 순서 무관하지만, 의도를 명확히 하기 위해 종료 전에 조회)
+            List<ChatRoomMember> activeMembers = chatRoomMemberRepository.findAllActiveMembersByChatRoomId(chatRoomId);
+
             chatRoom.close();
             chatRoomRepository.save(chatRoom);
 
@@ -563,6 +572,17 @@ public class ChatRoomService {
             );
             chatMessageRepository.save(systemMessage);
             log.info("방장 나가기로 인한 채팅방 종료 완료: chatRoomId={}", chatRoomId);
+
+            // 방장 제외 활성 멤버 전원에게 종료 알림 발행
+            activeMembers.stream()
+                    .filter(m -> !m.getUserId().equals(userId))
+                    .forEach(m -> eventPublisher.publishEvent(new ChatRoomNotificationEvent(
+                            m.getUserId(),
+                            "CHAT_ROOM_CLOSED",
+                            chatRoom.getRoomName(),
+                            chatRoomId
+                    )));
+            log.info("채팅방 종료 알림 이벤트 발행 완료 (방장 자동 종료): chatRoomId={}", chatRoomId);
             return;
         }
 
@@ -642,6 +662,20 @@ public class ChatRoomService {
         chatMessageRepository.save(systemMessage);
         log.info("강퇴 시스템 메시지 생성 완료: chatRoomId={}, kickedUserId={}",
                 chatRoomId, targetMember.getUserId());
+
+        // 10. 강퇴된 사용자에게 알림 발행
+        // @TransactionalEventListener(AFTER_COMMIT)로 커밋 이후 수신되므로
+        // 트랜잭션 롤백 시 알림이 발송되지 않는다.
+        String chatRoomName = chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .map(ChatRoom::getRoomName)
+                .orElse("채팅방");
+        eventPublisher.publishEvent(new ChatRoomNotificationEvent(
+                targetMember.getUserId(),
+                "CHAT_ROOM_KICKED",
+                chatRoomName,
+                chatRoomId
+        ));
+        log.info("강퇴 알림 이벤트 발행: chatRoomId={}, kickedUserId={}", chatRoomId, targetMember.getUserId());
     }
 
     // 채팅방 종료
@@ -667,6 +701,9 @@ public class ChatRoomService {
         }
 
         // 4. 채팅방 종료
+        // 종료 전에 활성 멤버 조회 (방장 제외 알림 발송용)
+        List<ChatRoomMember> activeMembers = chatRoomMemberRepository.findAllActiveMembersByChatRoomId(chatRoomId);
+
         chatRoom.close();
         chatRoomRepository.save(chatRoom);
         log.info("채팅방 종료 완료: chatRoomId={}", chatRoomId);
@@ -678,6 +715,17 @@ public class ChatRoomService {
         );
         chatMessageRepository.save(systemMessage);
         log.info("종료 시스템 메시지 생성 완료: chatRoomId={}", chatRoomId);
+
+        // 6. 방장 제외 활성 멤버 전원에게 종료 알림 발행
+        activeMembers.stream()
+                .filter(m -> !m.getUserId().equals(userId))
+                .forEach(m -> eventPublisher.publishEvent(new ChatRoomNotificationEvent(
+                        m.getUserId(),
+                        "CHAT_ROOM_CLOSED",
+                        chatRoom.getRoomName(),
+                        chatRoomId
+                )));
+        log.info("채팅방 종료 알림 이벤트 발행 완료 (명시적 종료): chatRoomId={}", chatRoomId);
     }
 
     // 채팅방 멤버 목록 조회
