@@ -67,6 +67,20 @@ public class NotificationService {
                 title = safeJobTitle + " 포트폴리오 분석";
                 body = "포트폴리오 분석 결과를 확인하세요!";
             }
+            case "COMPARISON_COMPLETE" -> {
+                title = safeJobTitle + " 비교 분석 완료";
+                body = "AI 비교 분석 결과를 확인해보세요.";
+            }
+            case "CHAT_ROOM_KICKED" -> {
+                title = "채팅방에서 강퇴되었습니다.";
+                body = safeJobTitle + " 채팅방에서 내보내졌습니다.";
+                refType = "CHAT_ROOM";
+            }
+            case "CHAT_ROOM_CLOSED" -> {
+                title = "채팅방이 종료되었습니다.";
+                body = safeJobTitle + " 채팅방이 종료되었습니다.";
+                refType = "CHAT_ROOM";
+            }
             default -> {
                 title = safeJobTitle + " 시스템 알림";
                 body = "처리가 완료되었습니다.";
