@@ -16,6 +16,7 @@ import com.thunder11.scuad.auth.service.AuthService;
 import com.thunder11.scuad.auth.dto.RefreshTokenRequest;
 import com.thunder11.scuad.auth.dto.TokenRefreshResponse;
 import com.thunder11.scuad.common.exception.ApiException;
+import com.thunder11.scuad.common.response.ApiResponse;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -106,8 +107,15 @@ public class AuthController {
 
     // Access Token 재발급
     // Refresh Token을 쿠키에서 받아서 새로운 Access Token과 Refresh Token 발급
+    //
+    // 수정 근거: 기존 TokenRefreshResponse 직접 반환 시 응답 구조가
+    //   { accessToken, refreshToken, tokenType, expiresIn } 으로 래퍼 없이 반환됨.
+    //   프론트엔드는 모든 API가 ApiResponse<T> 구조({ status, code, message, data })라고
+    //   가정하고 response.data.accessToken 을 읽는데, 래퍼가 없으면 .data 가 undefined가 되어
+    //   "Cannot destructure property 'accessToken' of 't.data'" 에러 발생 후 AUTH_CLEARED 처리됨.
+    //   → 다른 컨트롤러와 동일하게 ApiResponse<TokenRefreshResponse> 로 감싸서 반환하도록 수정.
     @PostMapping("/refresh")
-    public TokenRefreshResponse refreshToken(
+    public ApiResponse<TokenRefreshResponse> refreshToken(
             @CookieValue(name = "refreshToken") String refreshToken,
             HttpServletResponse response
     ) {
@@ -129,7 +137,7 @@ public class AuthController {
         response.addHeader("Set-Cookie", refreshTokenCookie.toString());
         log.info("토큰 재발급 완료, 새 Refresh Token을 HttpOnly 쿠키로 설정");
 
-        return tokenResponse;
+        return ApiResponse.of(200, "SUCCESS", "토큰 재발급 성공", tokenResponse);
     }
 
     // 로그아웃 (전체 디바이스 무효화)
