@@ -298,11 +298,12 @@ public class ChatRoomController {
 
         // leaveChatRoom()은 void이므로 방장 자동 종료 여부를 직접 알 수 없음.
         // 커밋 완료 후 채팅방 상태를 조회하여 CLOSED면 ROOM_CLOSED, 아니면 MEMBER_LEFT publish.
-        // DB 조회가 1회 추가되지만 leaveChatRoom() 반환 타입을 바꾸는 것보다
-        // 기존 Service 시그니처를 유지하는 쪽이 변경 영향 범위가 작아 이 방식을 선택.
-        chatRoomService.isRoomClosed(chatRoomId)
-                ? sseEventPublisher.publishRoomClosed(chatRoomId)
-                : sseEventPublisher.publishMemberLeft(chatRoomId);
+        if (chatRoomService.isRoomClosed(chatRoomId)) {
+            sseEventPublisher.publishRoomClosed(chatRoomId);
+        } else {
+            sseEventPublisher.publishMemberLeft(chatRoomId);
+        }
+
 
         return ApiResponse.of(
                 HttpStatus.OK.value(),
