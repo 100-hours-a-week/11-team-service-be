@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.thunder11.scuad.infra.redis.RedisSubscriber;
+import com.thunder11.scuad.infra.redis.SseEventSubscriber;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -34,6 +35,7 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 public class RedisPubSubConfig {
 
     private final RedisSubscriber redisSubscriber;
+    private final SseEventSubscriber sseEventSubscriber;
 
     // Pub/Sub 전용 RedisTemplate
     //
@@ -68,6 +70,17 @@ public class RedisPubSubConfig {
         return new MessageListenerAdapter(redisSubscriber, "onMessage");
     }
 
+    // SSE 이벤트 수신 핸들러 어댑터
+    //
+    // SseEventSubscriber.onMessage()를 chat-sse:* 채널 수신 콜백으로 등록
+    // messageListenerAdapter()와 별도 빈으로 분리한 이유:
+    //   동일한 컨테이너에 두 리스너를 등록하되 각각 다른 어댑터를 사용해야
+    //   채팅 메시지(WebSocket)와 SSE 이벤트 처리가 완전히 독립적으로 동작함
+    @Bean
+    public MessageListenerAdapter sseMessageListenerAdapter() {
+        return new MessageListenerAdapter(sseEventSubscriber, "onMessage");
+    }
+
     // Redis 채널 구독 컨테이너
     //
     // chat-room:* 패턴의 모든 채널 구독 (채팅방 ID별 채널 분리)
@@ -78,11 +91,18 @@ public class RedisPubSubConfig {
     @Bean
     public RedisMessageListenerContainer redisMessageListenerContainer(
             RedisConnectionFactory connectionFactory,
-            MessageListenerAdapter messageListenerAdapter
+            MessageListenerAdapter messageListenerAdapter,
+            MessageListenerAdapter sseMessageListenerAdapter
     ) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
+        // 채팅 메시지 브로드캐스트 채널 (기존)
         container.addMessageListener(messageListenerAdapter, new PatternTopic("chat-room:*"));
+        // 채팅방 상태 변경 SSE 알림 채널 (신규)
+        // chat-room:* 와 채널 패턴을 분리한 이유:
+        //   두 채널의 Subscriber 처리 방식이 완전히 달라(WebSocket vs SSE)
+        //   하나의 패턴으로 묶으면 분기 처리 로직이 복잡해지고 변경 영향 범위가 커짐
+        container.addMessageListener(sseMessageListenerAdapter, new PatternTopic("chat-sse:*"));
         return container;
     }
 }

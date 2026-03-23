@@ -18,6 +18,7 @@ import com.thunder11.scuad.auth.security.UserPrincipal;
 import com.thunder11.scuad.chat.service.ChatMessageService;
 import com.thunder11.scuad.chat.service.ChatRoomService;
 import com.thunder11.scuad.common.response.ApiResponse;
+import com.thunder11.scuad.infra.redis.SseEventPublisher;
 
 // 채팅방 관련 API 컨트롤러
 @Slf4j
@@ -31,6 +32,7 @@ public class ChatRoomController {
     private final com.thunder11.scuad.file.service.FileStorageService fileStorageService;
     private final ChatMemberDocumentService chatMemberDocumentService;
     private final ChatMemberComparisonService chatMemberComparisonService;
+    private final SseEventPublisher sseEventPublisher;
 
     // 공고별 채팅방 목록 조회
     @GetMapping("/job-postings/{jobMasterId}/chat-rooms")
@@ -114,6 +116,11 @@ public class ChatRoomController {
                 chatRoomId, userPrincipal.getUserId());
 
         chatRoomService.joinChatRoom(chatRoomId, userPrincipal.getUserId());
+
+        // 트랜잭션 커밋 완료 후 SSE 이벤트 publish
+        // joinChatRoom() 리턴 = 커밋 완료 시점이므로 이 시점 이후 publish해야
+        // 클라이언트가 이벤트 수신 후 멤버 목록 재조회 시 최신 데이터를 받을 수 있음
+        sseEventPublisher.publishMemberJoined(chatRoomId);
 
         return ApiResponse.of(
                 HttpStatus.OK.value(),
@@ -289,6 +296,15 @@ public class ChatRoomController {
 
         chatRoomService.leaveChatRoom(chatRoomId, userPrincipal.getUserId());
 
+        // leaveChatRoom()은 void이므로 방장 자동 종료 여부를 직접 알 수 없음.
+        // 커밋 완료 후 채팅방 상태를 조회하여 CLOSED면 ROOM_CLOSED, 아니면 MEMBER_LEFT publish.
+        if (chatRoomService.isRoomClosed(chatRoomId)) {
+            sseEventPublisher.publishRoomClosed(chatRoomId);
+        } else {
+            sseEventPublisher.publishMemberLeft(chatRoomId);
+        }
+
+
         return ApiResponse.of(
                 HttpStatus.OK.value(),
                 "CHAT_ROOM_LEFT",
@@ -308,6 +324,12 @@ public class ChatRoomController {
 
         chatRoomService.kickMember(chatRoomId, userPrincipal.getUserId(), chatRoomMemberId);
 
+        // kickMember()는 chatRoomMemberId 기준으로 강퇴하므로
+        // 강퇴된 userId를 Controller에서 직접 알 수 없음.
+        // SseEventPublisher.publishMemberKicked()는 chatRoomMemberId를 받아
+        // 내부에서 userId를 조회하는 방식으로 처리.
+        sseEventPublisher.publishMemberKicked(chatRoomId, chatRoomMemberId);
+
         return ApiResponse.of(
                 HttpStatus.OK.value(),
                 "MEMBER_KICKED",
@@ -325,6 +347,8 @@ public class ChatRoomController {
                 chatRoomId, userPrincipal.getUserId());
 
         chatRoomService.closeChatRoom(chatRoomId, userPrincipal.getUserId());
+
+        sseEventPublisher.publishRoomClosed(chatRoomId);
 
         return ApiResponse.of(
                 HttpStatus.OK.value(),
