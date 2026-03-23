@@ -58,6 +58,18 @@ public class SseEventSubscriber implements MessageListener {
             chatRoomMemberRepository.findAllActiveMembersByChatRoomId(chatRoomId)
                     .forEach(member -> sseEmitterRegistry.sendChatEvent(member.getUserId(), event));
 
+            // MEMBER_KICKED 이벤트 시 강퇴된 본인에게도 별도 push
+            //
+            // findAllActiveMembersByChatRoomId()는 kicked_at IS NULL 조건으로 조회하므로
+            // 강퇴된 멤버는 이미 kicked_at이 설정되어 위 목록에서 제외된다.
+            // 그러나 강퇴된 본인도 채팅방 내부 화면에서 강제 이탈 처리를 받아야 하므로
+            // kickedUserId를 페이로드에서 꺼내 별도로 push한다.
+            if ("MEMBER_KICKED".equals(event.getType()) && event.getKickedUserId() != null) {
+                sseEmitterRegistry.sendChatEvent(event.getKickedUserId(), event);
+                log.info("강퇴 대상에게 SSE 이벤트 push 완료: kickedUserId={}, chatRoomId={}",
+                        event.getKickedUserId(), chatRoomId);
+            }
+
             log.info("SSE 이벤트 브로드캐스트 완료: chatRoomId={}, type={}", chatRoomId, event.getType());
 
         } catch (Exception e) {
