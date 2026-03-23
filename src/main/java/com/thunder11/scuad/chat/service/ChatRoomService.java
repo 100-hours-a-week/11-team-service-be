@@ -594,6 +594,7 @@ public class ChatRoomService {
                             chatRoomId
                     )));
             log.info("채팅방 종료 알림 이벤트 발행 완료 (방장 자동 종료): chatRoomId={}", chatRoomId);
+
             return;
         }
 
