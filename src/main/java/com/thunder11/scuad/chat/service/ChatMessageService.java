@@ -220,9 +220,17 @@ public class ChatMessageService {
         log.info("메시지 전송 시작: chatRoomId={}, userId={}, messageType={}",
                 chatRoomId, userId, request.getMessageType());
 
-        // 1. 채팅방 존재 확인
-        chatRoomRepository.findByIdNotDeleted(chatRoomId)
+        // 1. 채팅방 존재 및 ACTIVE 상태 확인
+        // 수정 근거: findByIdNotDeleted는 deletedAt IS NULL만 체크하여 CLOSED 방도 반환함.
+        //           CLOSED 방에서 내역 조회(getMessages)는 허용하되 메시지 전송은 차단해야 하므로
+        //           sendMessage에서만 status = ACTIVE 조건을 추가로 검증.
+        com.thunder11.scuad.chat.domain.ChatRoom chatRoom = chatRoomRepository.findByIdNotDeleted(chatRoomId)
                 .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        if (chatRoom.getStatus() != com.thunder11.scuad.chat.domain.type.RoomStatus.ACTIVE) {
+            log.warn("종료된 채팅방에 메시지 전송 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND);
+        }
 
         // 2. 멤버십 확인 (참여자만 메시지 전송 가능)
         boolean isMember = chatRoomMemberRepository

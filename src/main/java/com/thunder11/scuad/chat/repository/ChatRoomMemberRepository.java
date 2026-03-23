@@ -16,10 +16,21 @@ public interface ChatRoomMemberRepository extends JpaRepository<ChatRoomMember, 
     // 채팅방의 현재 인원 수 (강퇴되지 않은 멤버만)
     long countByChatRoomIdAndKickedAtIsNull(Long chatRoomId);
 
-    // 사용자가 특정 공고의 채팅방에 이미 참여 중인지 확인 (job_application_id로 확인)
+    // 사용자가 특정 공고의 ACTIVE 채팅방에 이미 참여 중인지 확인 (job_application_id로 확인)
+    //
+    // 수정 근거:
+    //   기존 쿼리는 kickedAt IS NULL 조건만 검사하여, 방이 CLOSED/DELETED 되어도
+    //   잔존 멤버 레코드를 반환함.
+    //   → "같은 공고 내 1개 ACTIVE 방에서만 활동" 정책을 위반: 방이 종료된 후
+    //     새 방 생성·입장 시 CHAT_ROOM_ALREADY_JOINED_OTHER 에러 발생.
+    //   → ChatRoom 테이블을 JOIN하여 status = 'ACTIVE', deletedAt IS NULL 인 방만
+    //     필터링함으로써 종료된 방의 멤버 레코드를 무시하도록 변경.
     @Query("SELECT crm FROM ChatRoomMember crm " +
+            "JOIN ChatRoom cr ON cr.chatRoomId = crm.chatRoomId " +
             "WHERE crm.jobApplicationId = :jobApplicationId " +
-            "AND crm.kickedAt IS NULL")
+            "AND crm.kickedAt IS NULL " +
+            "AND cr.status = 'ACTIVE' " +
+            "AND cr.deletedAt IS NULL")
     Optional<ChatRoomMember> findByJobApplicationIdAndNotKicked(@Param("jobApplicationId") Long jobApplicationId);
 
     // 채팅방 멤버 ID로 조회 (강퇴되지 않은 멤버만)
