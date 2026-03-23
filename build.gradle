@@ -46,6 +46,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'com.github.gavlyukovskiy:p6spy-spring-boot-starter:1.10.0'
 
+    // JSON 구조화 로깅
+    implementation 'net.logstash.logback:logstash-logback-encoder:9.0'
+
     // JWT
     implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'

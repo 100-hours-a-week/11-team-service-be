@@ -3,7 +3,7 @@ name: Backend CD
 on:
   workflow_dispatch:
   push:
-    branches: [develop, main]
+    branches: [develop, 'release/**', main]
     paths-ignore:
       - "**.md"
       - ".github/**"
@@ -47,7 +47,11 @@ jobs:
           SHA_SHORT="${GITHUB_SHA::7}"
           BRANCH="${GITHUB_REF_NAME}"
 
-          if [ "$BRANCH" == "main" ]; then
+          if [[ "$BRANCH" == release/* ]]; then
+            echo "tag_latest=staging-latest" >> $GITHUB_OUTPUT
+            echo "tag_sha=staging-${SHA_SHORT}" >> $GITHUB_OUTPUT
+            echo "env_label=STAGING" >> $GITHUB_OUTPUT
+          elif [ "$BRANCH" == "main" ]; then
             echo "tag_latest=main-latest" >> $GITHUB_OUTPUT
             echo "tag_sha=main-${SHA_SHORT}" >> $GITHUB_OUTPUT
             echo "env_label=PROD" >> $GITHUB_OUTPUT
@@ -81,14 +85,23 @@ jobs:
       # ----------------------------
       - name: Update K8s manifest
         run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          if [[ "$BRANCH" == release/* ]]; then
+            OVERLAY="staging"
+          elif [ "$BRANCH" == "main" ]; then
+            OVERLAY="prod"
+          else
+            OVERLAY="dev"
+          fi
+
           git clone https://x-access-token:${{ secrets.CLOUD_REPO_PAT }}@github.com/100-hours-a-week/11-team-service-cloud.git /tmp/cloud-repo
           cd /tmp/cloud-repo
           git checkout develop
-          sed -i "s|newTag: .*|newTag: ${{ steps.config.outputs.tag_sha }}|" k8s/apps/backend/overlays/dev/kustomization.yaml
+          sed -i "s|newTag: .*|newTag: ${{ steps.config.outputs.tag_sha }}|" "k8s/apps/backend/overlays/${OVERLAY}/kustomization.yaml"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "chore: update backend image to ${{ steps.config.outputs.tag_sha }}"
+          git commit -m "chore: update backend ${OVERLAY} image to ${{ steps.config.outputs.tag_sha }}"
           git push origin develop
 
       # ----------------------------
