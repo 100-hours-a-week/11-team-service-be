@@ -539,6 +539,17 @@ public class ChatRoomService {
         log.info("입장 시스템 메시지 생성 완료: chatRoomId={}, userId={}", chatRoomId, userId);
     }
 
+    // 채팅방 종료 여부 확인 (Controller에서 SSE 이벤트 분기용)
+    //
+    // leaveChatRoom()이 void이므로 방장 자동 종료 여부를 Controller에서 알 수 없음.
+    // 반환 타입 변경 없이 Service 시그니처를 유지하면서 Controller가 종료 여부를
+    // 판단할 수 있도록 별도 조회 메서드를 제공.
+    public boolean isRoomClosed(Long chatRoomId) {
+        return chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .map(room -> room.getStatus() == RoomStatus.CLOSED)
+                .orElse(true); // 방이 없으면 종료된 것으로 간주
+    }
+
     // 채팅방 퇴장
     @Transactional
     public void leaveChatRoom(Long chatRoomId, Long userId) {

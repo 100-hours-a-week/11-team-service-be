@@ -62,8 +62,13 @@ public class SseEventPublisher {
                 .build());
     }
 
-    public void publishMemberKicked(Long chatRoomId, Long kickedUserId) {
+    public void publishMemberKicked(Long chatRoomId, Long chatRoomMemberId) {
         long currentParticipants = chatRoomMemberRepository.countByChatRoomIdAndKickedAtIsNull(chatRoomId);
+        // chatRoomMemberId로 강퇴된 userId 조회
+        // kicked_at이 설정된 직후이므로 kicked 상태로 조회해야 함
+        Long kickedUserId = chatRoomMemberRepository.findById(chatRoomMemberId)
+                .map(m -> m.getUserId())
+                .orElse(null);
         publish(chatRoomId, ChatSseEvent.builder()
                 .type("MEMBER_KICKED")
                 .chatRoomId(chatRoomId)
