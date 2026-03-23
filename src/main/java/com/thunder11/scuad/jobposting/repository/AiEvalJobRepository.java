@@ -1,5 +1,6 @@
 package com.thunder11.scuad.jobposting.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,4 +23,6 @@ public interface AiEvalJobRepository extends JpaRepository<AiEvalJob, Long> {
 
         Optional<AiEvalJob> findFirstBySourceUrlAndStatusInOrderByIdDesc(String sourceUrl,
                         java.util.Collection<com.thunder11.scuad.jobposting.domain.type.AiJobStatus> statuses);
+
+        List<AiEvalJob> findAllByStatusAndUpdatedAtBefore(AiJobStatus status, LocalDateTime dateTime);
 }

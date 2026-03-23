@@ -1,12 +1,7 @@
 package com.thunder11.scuad.jobposting.service;
 
 import com.thunder11.scuad.jobposting.event.AiJobPostingAnalysisCreateEvent;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.event.TransactionPhase;
-import org.springframework.transaction.event.TransactionalEventListener;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -17,6 +12,9 @@ import com.thunder11.scuad.jobposting.event.AiComparisonCreateEvent;
 import com.thunder11.scuad.jobposting.domain.*;
 import com.thunder11.scuad.jobposting.repository.*;
 import com.thunder11.scuad.jobposting.domain.type.AnalysisType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.context.event.EventListener;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
@@ -24,37 +22,41 @@ import com.thunder11.scuad.jobposting.domain.type.AnalysisType;
 public class AiEvaluationWorker {
 
     private final AiEvalJobRepository aiEvalJobRepository;
-    private final RabbitTemplate rabbitTemplate;
+    private final AiMessageOutboxRepository outboxRepository;
+    private final ObjectMapper objectMapper;
 
-    @Async
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void processJobPostingAnalysisAsync(AiJobPostingAnalysisCreateEvent event) {
-        log.info("채용공고 분석 메시지 발송 시작: evalJobId={}", event.getEvalJobId());
+    @EventListener
+    @Transactional
+    public void processJobPostingAnalysis(AiJobPostingAnalysisCreateEvent event) {
         AiEvalJob aiEvalJob = aiEvalJobRepository.findById(event.getEvalJobId())
-                .orElseThrow(() -> new IllegalStateException("분석 작업을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalStateException("Job not found"));
+        
         AiRequestMessage message = AiRequestMessage.builder()
                 .evalJobId(String.valueOf(aiEvalJob.getId()))
                 .userId(String.valueOf(event.getUserId()))
                 .url(aiEvalJob.getSourceUrl())
                 .build();
+        
         aiEvalJob.startProcessing();
         aiEvalJobRepository.save(aiEvalJob);
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.QUEUE_JOBPOSTING, message);
-        log.info("채용공고 분석 RabbitMQ 발송 완료 - evalJobId: {}", aiEvalJob.getId());
+        
+        try {
+            String payload = objectMapper.writeValueAsString(message);
+            outboxRepository.save(new AiMessageOutbox(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.QUEUE_JOBPOSTING, payload));
+        } catch (Exception e) {
+            log.error("Outbox save failed", e);
+        }
     }
 
-    @Async
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void processEvaluationAsync(AiAnalysisCreateEvent event) {
-        log.info("AI 분석 작업시작: UserId={}, JobPostingId={}, Type={}",
-                event.getUserId(), event.getJobPostingId(), event.getAnalysisType());
-
+    @EventListener
+    @Transactional
+    public void processEvaluation(AiAnalysisCreateEvent event) {
         AiEvalJob aiEvalJob = aiEvalJobRepository
                 .findFirstByRequestedByUserIdAndJobApplicationJobMasterIdAndAnalysisTypeOrderByIdDesc(
                         event.getUserId(),
                         event.getJobPostingId(),
                         event.getAnalysisType())
-                .orElseThrow(() -> new IllegalStateException("AI 분석 작업을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalStateException("Job not found"));
 
         String routingKey = getQueueNameByType(event.getAnalysisType());
 
@@ -67,8 +69,12 @@ public class AiEvaluationWorker {
         aiEvalJob.startProcessing();
         aiEvalJobRepository.save(aiEvalJob);
 
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, routingKey, message);
-        log.info("RabbitMQ 발송 완료 - Queue: {}, evalJobId: {}", routingKey, aiEvalJob.getId());
+        try {
+            String payload = objectMapper.writeValueAsString(message);
+            outboxRepository.save(new AiMessageOutbox(RabbitMQConfig.EXCHANGE_NAME, routingKey, payload));
+        } catch (Exception e) {
+            log.error("Outbox save failed", e);
+        }
     }
 
     // COMPARISON 타입 전용 핸들러
@@ -76,14 +82,11 @@ public class AiEvaluationWorker {
     //   COMPARISON은 competitor 정보가 추가로 필요하며,
     //   AiEvalJob이 이미 생성된 상태에서 이벤트를 발행하므로
     //   evalJobId로 직접 조회하는 방식을 사용한다.
-    @Async
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void processComparisonAsync(AiComparisonCreateEvent event) {
-        log.info("AI 비교 분석 작업 시작: evalJobId={}, userId={}, competitorUserId={}",
-                event.getEvalJobId(), event.getUserId(), event.getCompetitorUserId());
-
+    @EventListener
+    @Transactional
+    public void processComparison(AiComparisonCreateEvent event) {
         AiEvalJob aiEvalJob = aiEvalJobRepository.findById(event.getEvalJobId())
-                .orElseThrow(() -> new IllegalStateException("AI 비교 분석 작업을 찾을 수 없습니다. ID=" + event.getEvalJobId()));
+                .orElseThrow(() -> new IllegalStateException("Job not found"));
 
         AiRequestMessage message = AiRequestMessage.builder()
                 .evalJobId(String.valueOf(aiEvalJob.getId()))
@@ -92,8 +95,12 @@ public class AiEvaluationWorker {
                 .competitor(String.valueOf(event.getCompetitorUserId()))
                 .build();
 
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.QUEUE_COMPARISON, message);
-        log.info("RabbitMQ 발송 완료 - Queue: {}, evalJobId: {}", RabbitMQConfig.QUEUE_COMPARISON, aiEvalJob.getId());
+        try {
+            String payload = objectMapper.writeValueAsString(message);
+            outboxRepository.save(new AiMessageOutbox(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.QUEUE_COMPARISON, payload));
+        } catch (Exception e) {
+            log.error("Outbox save failed", e);
+        }
     }
 
     private String getQueueNameByType(AnalysisType type) {

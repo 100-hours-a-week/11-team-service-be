@@ -123,8 +123,8 @@ public class AiResultProcessingService {
                                     .myApplication(myApplication)
                                     .competitorApplication(competitorApplication)
                                     .comparisonMetrics(metrics)
-                                    .strengthsReport(result.getStrengthsReport())
-                                    .weaknessesReport(result.getWeaknessesReport())
+                                    .strengthsReport(formatToMarkdown(result.getStrengthsReport()))
+                                    .weaknessesReport(formatToMarkdown(result.getWeaknessesReport()))
                                     .build();
                             aiApplicantComparisonRepository.save(comparison);
                             log.info("AI 비교 결과 저장 완료: myApplicationId={}, competitorApplicationId={}",
@@ -140,7 +140,7 @@ public class AiResultProcessingService {
                 : null;
 
         List<EvaluationScore> evaluationScores = result.getCompetencyScores().stream()
-                .map(cs -> new EvaluationScore(cs.getName(), cs.getScore(), cs.getDescription()))
+                .map(cs -> new EvaluationScore(cs.getName(), cs.getScore(), formatToMarkdown(cs.getDescription())))
                 .collect(Collectors.toList());
 
         if (criteria != null) {
@@ -181,17 +181,19 @@ public class AiResultProcessingService {
         aiResumeAnalysisRepository.findByJobApplicationId(application.getId())
                 .ifPresentOrElse(
                         existing -> {
-                            existing.update(formattedReport, result.getJobFitScore(),
-                                    result.getExperienceClarityScore(), result.getReadabilityScore());
+                            existing.update(formattedReport,
+                                    formatToMarkdown(result.getJobFitScore()),
+                                    formatToMarkdown(result.getExperienceClarityScore()),
+                                    formatToMarkdown(result.getReadabilityScore()));
                             aiResumeAnalysisRepository.save(existing);
                             log.info("이력서 분석 결과 업데이트 완료 (가공 적용): ApplicationId={}", application.getId());
                         }, () -> {
                             aiResumeAnalysisRepository.save(AiResumeAnalysis.builder()
                                     .jobApplication(application)
                                     .aiAnalysisReport(formattedReport)
-                                    .jobFitScore(result.getJobFitScore())
-                                    .experienceClarityScore(result.getExperienceClarityScore())
-                                    .readabilityScore(result.getReadabilityScore())
+                                    .jobFitScore(formatToMarkdown(result.getJobFitScore()))
+                                    .experienceClarityScore(formatToMarkdown(result.getExperienceClarityScore()))
+                                    .readabilityScore(formatToMarkdown(result.getReadabilityScore()))
                                     .build());
                             log.info("이력서 분석 결과 신규 저장 완료 (가공 적용): ApplicationId={}", application.getId());
                         });
@@ -202,8 +204,10 @@ public class AiResultProcessingService {
         aiPortfolioAnalysisRepository.findByJobApplicationId(application.getId())
                 .ifPresentOrElse(
                         existing -> {
-                            existing.update(formattedReport, result.getProblemSolvingScore(),
-                                    result.getContributionClarityScore(), result.getTechnicalDepthScore());
+                            existing.update(formattedReport,
+                                    formatToMarkdown(result.getProblemSolvingScore()),
+                                    formatToMarkdown(result.getContributionClarityScore()),
+                                    formatToMarkdown(result.getTechnicalDepthScore()));
                             aiPortfolioAnalysisRepository.save(existing);
                             log.info("포트폴리오 분석 결과 업데이트 완료 (가공 적용): ApplicationId={}", application.getId());
                         },
@@ -211,9 +215,9 @@ public class AiResultProcessingService {
                             aiPortfolioAnalysisRepository.save(AiPortfolioAnalysis.builder()
                                     .jobApplication(application)
                                     .aiAnalysisReport(formattedReport)
-                                    .problemSolvingScore(result.getProblemSolvingScore())
-                                    .contributionClarityScore(result.getContributionClarityScore())
-                                    .technicalDepthScore(result.getTechnicalDepthScore())
+                                    .problemSolvingScore(formatToMarkdown(result.getProblemSolvingScore()))
+                                    .contributionClarityScore(formatToMarkdown(result.getContributionClarityScore()))
+                                    .technicalDepthScore(formatToMarkdown(result.getTechnicalDepthScore()))
                                     .build());
                             log.info("포트폴리오 분석 결과 신규 저장 완료 (가공 적용): ApplicationId={}", application.getId());
                         });
@@ -225,8 +229,7 @@ public class AiResultProcessingService {
     private String formatToMarkdown(String text) {
         if (text == null || text.isBlank()) return text;
 
-        // 텍스트 가공이 가독성을 오히려 해친다는 피드백에 따라
-        // 문장 단위 줄바꿈만 수행하는 단순 논리로 회기합니다.
-        return text.replaceAll("\\. (?=[가-힣\\[])", ".\n\n").trim();
+        // 문장 단위 줄바꿈을 모든 글자(한글, 영문 등)에 대해 적용합니다.
+        return text.replaceAll("\\. +", ".\n\n").trim();
     }
 }
