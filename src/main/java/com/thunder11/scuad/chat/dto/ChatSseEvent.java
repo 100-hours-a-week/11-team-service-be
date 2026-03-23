@@ -2,6 +2,8 @@ package com.thunder11.scuad.chat.dto;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
 /**
  * 채팅방 상태 변경 SSE 이벤트 DTO
@@ -17,6 +19,8 @@ import lombok.Getter;
  */
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ChatSseEvent {
     private String type;
     private Long chatRoomId;
