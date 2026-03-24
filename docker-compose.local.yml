@@ -1,0 +1,80 @@
+name: scuad-backend
+services:
+  ## MYSQL
+  mysql:
+    image: mysql:8.0
+    container_name: scuad-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-password}
+      MYSQL_DATABASE: ${DB_SCHEMA:-example}
+      MYSQL_USER: ${DB_USERNAME:-root}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-password}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    networks:
+      - scuad-network
+
+  ## RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: always
+    container_name: scuad-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "15672:15672"
+    networks:
+      - scuad-network
+
+  ## Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend
+    ports:
+      - "8080:8080"
+      - "9101:9101"
+    depends_on:
+      - mysql
+      - rabbitmq
+    env_file:
+      - .env
+
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      JAVA_OPTS: ${JAVA_OPTS:-}
+      TZ: Asia/Seoul
+      DB_HOST: scuad-mysql
+      RABBITMQ_HOST: scuad-rabbitmq
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://localhost:9101/actuator/health >/dev/null || exit 1",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        tag: "{{.Name}}"
+
+    stop_grace_period: 30s
+
+    networks: 
+      - scuad-network
+
+networks:
+  scuad-network:
+    external: true

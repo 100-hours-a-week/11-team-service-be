@@ -19,7 +19,9 @@ public class AiEvaluationResultResponse {
     private String oneLineReview;
     private String feedbackDetail;
     private List<EvaluationScore> comparisonScores;
+    private String status;
     private LocalDateTime analyzedAt;
+    private Boolean isProcessing;
 
 
     public static AiEvaluationResultResponse from(AiApplicantEvaluation entity) {
@@ -31,6 +33,7 @@ public class AiEvaluationResultResponse {
                 .feedbackDetail(entity.getFeedbackDetail())
                 .comparisonScores(entity.getComparisonScores())
                 .analyzedAt(entity.getCreatedAt())
+                .status("COMPLETED")
                 .build();
     }
 }

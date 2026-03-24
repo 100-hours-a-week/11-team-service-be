@@ -2,6 +2,7 @@ package com.thunder11.scuad.jobposting.repository;
 
 import static com.thunder11.scuad.jobposting.domain.QCompany.company;
 import static com.thunder11.scuad.jobposting.domain.QJobMaster.jobMaster;
+import static com.thunder11.scuad.jobposting.domain.QJobPost.jobPost;
 import static com.thunder11.scuad.jobposting.domain.QJobMasterSkill.jobMasterSkill;
 import static com.thunder11.scuad.jobposting.domain.QSkill.skill;
 
@@ -20,11 +21,13 @@ import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.NumberExpression;
+import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import com.thunder11.scuad.jobposting.domain.JobMaster;
 import com.thunder11.scuad.jobposting.domain.type.JobStatus;
+import com.thunder11.scuad.jobposting.domain.type.RegistrationStatus;
 import com.thunder11.scuad.jobposting.dto.request.JobPostingSearchCondition;
 import com.thunder11.scuad.common.util.CursorTokenUtil;
 
@@ -34,11 +37,18 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
     private final JPAQueryFactory queryFactory;
 
     @Override
-    public List<JobMaster> searchJobPostings(JobPostingSearchCondition condition, CursorTokenUtil.CursorData cursorData) {
+    public List<JobMaster> searchJobPostings(JobPostingSearchCondition condition,
+            CursorTokenUtil.CursorData cursorData) {
 
         JPAQuery<Long> query = queryFactory
                 .select(jobMaster.id)
                 .from(jobMaster)
+                .where(jobMaster.id.in(
+                        JPAExpressions.select(jobPost.jobMaster.id)
+                                .from(jobPost)
+                                .where(jobPost.registrationStatus.eq(RegistrationStatus.CONFIRMED))
+                ))
+                .where(eqStatus(condition.getStatus()))
                 .where(cursorCondition(cursorData, condition.getSort()));
 
         if (StringUtils.hasText(condition.getKeyword())) {
@@ -87,13 +97,13 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
 
     private OrderSpecifier[] getOrderSpecifier(String sort) {
         if ("DEADLINE_ASC".equalsIgnoreCase(sort)) {
-            return new OrderSpecifier[]{
+            return new OrderSpecifier[] {
                     getStatusRank().asc(),
-                    jobMaster.endDate.asc(),
+                    jobMaster.endDate.asc().nullsLast(),
                     jobMaster.id.desc()
             };
         }
-        return new OrderSpecifier[]{jobMaster.id.desc()};
+        return new OrderSpecifier[] { jobMaster.id.desc() };
     }
 
     private NumberExpression<Integer> getStatusRank() {
@@ -114,9 +124,12 @@ public class JobMasterRepositoryImpl implements JobMasterRepositoryCustom {
             Integer cursorRank = (cursorStatus == JobStatus.OPEN) ? 1 : 2;
             NumberExpression<Integer> statusRank = getStatusRank();
 
+            LocalDate maxDate = LocalDate.of(9999, 12, 31);
+            var effectiveEndDate = jobMaster.endDate.coalesce(maxDate);
+
             return statusRank.gt(cursorRank)
-                    .or(statusRank.eq(cursorRank).and(jobMaster.endDate.gt(cursorEndDate)))
-                    .or(statusRank.eq(cursorRank).and(jobMaster.endDate.eq(cursorEndDate))
+                    .or(statusRank.eq(cursorRank).and(effectiveEndDate.gt(cursorEndDate)))
+                    .or(statusRank.eq(cursorRank).and(effectiveEndDate.eq(cursorEndDate))
                             .and(jobMaster.id.lt(cursorId)));
         }
 

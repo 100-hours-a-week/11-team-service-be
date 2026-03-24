@@ -16,6 +16,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import lombok.AccessLevel;
@@ -40,8 +41,19 @@ public class AiEvalJob {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "job_application_id", nullable = false)
+    @JoinColumn(name = "job_application_id", nullable = true)
     private JobApplication jobApplication;
+
+    @Column(name = "source_url", length = 512)
+    private String sourceUrl;
+
+    // COMPARISON 타입 전용: 비교 대상 지원자의 지원 ID
+    // AI 콜백 수신 시 ai_applicant_comparison 저장에 my + competitor 두 값이 모두 필요하므로
+    // AiEvalJob 생성 시점에 함께 저장한다.
+    // EVALUATION/RESUME/PORTFOLIO 타입에서는 사용하지 않으므로 nullable
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "competitor_application_id", nullable = true)
+    private JobApplication competitorApplication;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "requested_by", nullable = false)
@@ -62,12 +74,19 @@ public class AiEvalJob {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
     @Builder
-    public AiEvalJob(JobApplication jobApplication, User requestedBy, AnalysisType analysisType, AiJobStatus status) {
+    public AiEvalJob(JobApplication jobApplication, JobApplication competitorApplication,
+                     User requestedBy, AnalysisType analysisType, AiJobStatus status, String sourceUrl) {
         this.jobApplication = jobApplication;
+        this.competitorApplication = competitorApplication;
         this.requestedBy = requestedBy;
         this.analysisType = analysisType;
         this.status = status;
+        this.sourceUrl = sourceUrl;
     }
 
     public void complete() {

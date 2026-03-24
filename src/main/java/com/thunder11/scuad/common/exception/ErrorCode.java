@@ -16,6 +16,7 @@ public enum ErrorCode {
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "서버 오류가 발생했습니다."),
     AI_SERVICE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "AI_SERVICE_ERROR", "AI 서비스 연동 중 오류가 발생했습니다."),
     FILE_UPLOAD_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_UPLOAD_ERROR","파일 업로드 중 오류가 발생했습니다."),
+    INVALID_FILE_TYPE(HttpStatus.BAD_REQUEST, "INVALID_FILE_TYPE", "이미지 파일만 업로드할 수 있습니다."),
     ACCEPTED(HttpStatus.ACCEPTED, "ACCEPTED", "요청이 접수되어 처리 중입니다."),
 
     // oauth 도메인 에러
@@ -26,6 +27,7 @@ public enum ErrorCode {
     REFRESH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "REFRESH_TOKEN_EXPIRED", "리프레시 토큰이 만료되었습니다. 다시 로그인해주세요."),
     REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "REFRESH_TOKEN_NOT_FOUND", "리프레시 토큰을 찾을 수 없습니다."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다."),
+    WITHDRAWN_USER(HttpStatus.FORBIDDEN, "WITHDRAWN_USER", "탈퇴한 계정입니다."),
     KAKAO_TOKEN_REQUEST_FAILED(HttpStatus.BAD_REQUEST, "KAKAO_TOKEN_REQUEST_FAILED", "카카오 토큰 발급에 실패했습니다."),
     KAKAO_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "KAKAO_API_ERROR", "카카오 API 호출 중 오류가 발생했습니다."),
 
@@ -51,7 +53,10 @@ public enum ErrorCode {
     FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "FILE_NOT_FOUND", "파일을 찾을 수 없습니다."),
     FILE_DOWNLOAD_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_DOWNLOAD_ERROR", "파일 다운로드 URL 생성에 실패했습니다."),
     INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "INVALID_INPUT_VALUE", "since와 cursor를 동시에 사용할 수 없습니다"),
+    NICKNAME_DUPLICATE(HttpStatus.CONFLICT, "USER_002", "이미 사용 중인 닉네임입니다."),
+    USER_ALREADY_WITHDRAWN(HttpStatus.FORBIDDEN, "USER_003", "이미 탈퇴한 사용자입니다."),
     COMPARISON_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "COMPARISON_SELF_NOT_ALLOWED", "자기 자신과는 비교할 수 없습니다."),
+    COMPARISON_RESULT_NOT_FOUND(HttpStatus.NOT_FOUND, "COMPARISON_RESULT_NOT_FOUND", "비교 분석 결과가 아직 준비되지 않았습니다. 잠시 후 다시 조회해주세요."),
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", "제출된 문서가 없습니다.");
 
     private final HttpStatus status;

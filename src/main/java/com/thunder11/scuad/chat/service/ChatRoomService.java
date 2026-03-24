@@ -1,7 +1,9 @@
 package com.thunder11.scuad.chat.service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -16,10 +18,14 @@ import com.thunder11.scuad.jobposting.domain.type.ApplicationDocumentType;
 import com.thunder11.scuad.jobposting.repository.AiApplicationEvaluationRepository;
 import com.thunder11.scuad.jobposting.repository.ApplicationDocumentRepository;
 import com.thunder11.scuad.jobposting.repository.JobApplicationRepository;
+import com.thunder11.scuad.file.service.S3FileManagementService;
 import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.thunder11.scuad.notification.event.ChatRoomNotificationEvent;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.thunder11.scuad.chat.domain.ChatRoom;
 import com.thunder11.scuad.chat.domain.ChatRoomMember;
 import com.thunder11.scuad.chat.domain.type.MemberRole;
+import com.thunder11.scuad.chat.dto.ChatRoomPreloadedData;
 import com.thunder11.scuad.chat.dto.JoinEligibility;
 import com.thunder11.scuad.chat.dto.request.ChatRoomCreateRequest;
 import com.thunder11.scuad.chat.dto.response.*;
@@ -50,6 +57,8 @@ public class ChatRoomService {
     private final ApplicationDocumentRepository applicationDocumentRepository;
     private final UserRepository userRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final S3FileManagementService s3FileManagementService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // 사용자의 AI 평가 점수 조회 (private 헬퍼 메서드)
     private Integer getMyScore(Long userId, Long jobMasterId) {
@@ -95,16 +104,11 @@ public class ChatRoomService {
     }
 
     // ChatRoom -> ChatRoomSummaryResponse 변환
-    private ChatRoomSummaryResponse convertToSummary(ChatRoom room, Long userId) {
-        // 현재 인원 수 조회
-        long currentParticipants = chatRoomMemberRepository.countByChatRoomIdAndKickedAtIsNull(room.getChatRoomId());
-
-        // 방장 닉네임 조회
-        String hostNickname = userRepository.findNicknameByUserId(room.getCreatedBy())
-                .orElse("알 수 없음");
-
-        // 입장 가능 여부 및 상태를 한 번에 판단
-        JoinEligibility eligibility = determineJoinEligibility(room, currentParticipants, userId);
+    // 개선: stream 밖에서 미리 조회한 ChatRoomPreloadedData를 받아 DB 재조회 없이 Map 조회만 수행
+    private ChatRoomSummaryResponse convertToSummary(ChatRoom room, Long userId, ChatRoomPreloadedData data) {
+        long currentParticipants = data.participantCountMap().getOrDefault(room.getChatRoomId(), 0L);
+        String hostNickname = data.hostNicknameMap().getOrDefault(room.getCreatedBy(), "알 수 없음");
+        JoinEligibility eligibility = determineJoinEligibility(room, currentParticipants, data);
 
         return ChatRoomSummaryResponse.builder()
                 .chatRoomId(room.getChatRoomId())
@@ -123,13 +127,10 @@ public class ChatRoomService {
     }
 
     // 입장 가능 여부 및 상태를 한 번에 판단
-    private JoinEligibility determineJoinEligibility(ChatRoom room, long currentParticipants, Long userId) {
+    // 개선: Map/Set 조회만 수행 — 기존에는 채팅방마다 최대 6번 DB 조회 발생
+    private JoinEligibility determineJoinEligibility(ChatRoom room, long currentParticipants, ChatRoomPreloadedData data) {
         // 1. 이미 참여 중인지 확인
-        boolean alreadyJoined = chatRoomMemberRepository
-                .findByChatRoomIdAndUserIdAndKickedAtIsNull(room.getChatRoomId(), userId)
-                .isPresent();
-
-        if (alreadyJoined) {
+        if (data.joinedRoomIds().contains(room.getChatRoomId())) {
             return JoinEligibility.unavailable("ALREADY_JOINED");
         }
 
@@ -139,54 +140,36 @@ public class ChatRoomService {
         }
 
         // 3. 강퇴 이력 확인
-        boolean isKicked = chatRoomMemberRepository.existsKickedMember(room.getChatRoomId(), userId);
-        if (isKicked) {
+        if (data.kickedRoomIds().contains(room.getChatRoomId())) {
             return JoinEligibility.unavailable("KICKED");
         }
 
         // 4. 지원서 확인
-        Optional<JobApplication> jobApplicationOpt = jobApplicationRepository
-                .findByUserIdAndJobMasterId(userId, room.getJobMasterId());
-
-        if (jobApplicationOpt.isEmpty()) {
+        if (data.jobApplication() == null) {
             return JoinEligibility.unavailable("NO_APPLICATION");
         }
 
-        Long jobApplicationId = jobApplicationOpt.get().getId();
-
         // 5. 서류 제출 확인 (이력서만 필수, 포트폴리오는 선택)
-        boolean hasResume = applicationDocumentRepository
-                .existsByJobApplicationIdAndDocType(jobApplicationId, ApplicationDocumentType.RESUME);
-
-        if (!hasResume) {
+        if (!data.hasResume()) {
             return JoinEligibility.unavailable("NO_RESUME");
         }
 
-        // 포트폴리오는 선택 제출이므로 검증하지 않음
-
         // 6. AI 점수 확인
-        Optional<AiApplicantEvaluation> evaluationOpt = aiApplicationEvaluationRepository
-                .findByJobApplicationId(jobApplicationId);
-
-        if (evaluationOpt.isEmpty()) {
+        if (data.evaluation() == null) {
             return JoinEligibility.unavailable("NO_SCORE");
         }
 
         // 7. 커트라인 점수 확인
-        Integer myScore = evaluationOpt.get().getOverallScore();
-        if (myScore < room.getCutlineScore()) {
+        if (data.evaluation().getOverallScore() < room.getCutlineScore()) {
             return JoinEligibility.unavailable("CUTLINE_NOT_MET");
         }
 
         // 8. 같은 공고의 다른 방 참여 여부 확인
-        Optional<ChatRoomMember> otherRoomMember = chatRoomMemberRepository
-                .findByJobApplicationIdAndNotKicked(jobApplicationId);
-
-        if (otherRoomMember.isPresent() && !otherRoomMember.get().getChatRoomId().equals(room.getChatRoomId())) {
+        if (data.otherRoomMember().isPresent()
+                && !data.otherRoomMember().get().getChatRoomId().equals(room.getChatRoomId())) {
             return JoinEligibility.unavailable("ALREADY_JOINED_OTHER");
         }
 
-        // 모든 조건 통과
         return JoinEligibility.available();
     }
 
@@ -228,8 +211,76 @@ public class ChatRoomService {
         }
 
         // 5. ChatRoom -> ChatRoomSummaryResponse 변환
+        // 개선: stream 시작 전 공통 데이터를 IN 쿼리로 일괄 조회 후 Map/Set으로 재사용
+        //       기존: 채팅방마다 8번 DB 조회 → 총 4 + (8 × N)번
+        //       개선: stream 밖 IN 쿼리 8번 고정 → 총 4 + 8번 (채팅방 수 무관)
+
+        List<Long> chatRoomIds = chatRooms.stream()
+                .map(ChatRoom::getChatRoomId)
+                .collect(Collectors.toList());
+
+        // 채팅방별 현재 인원 수 (IN 쿼리 1번)
+        Map<Long, Long> participantCountMap = chatRoomMemberRepository.countByChatRoomIds(chatRoomIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (Long) row[1]
+                ));
+
+        // 방장 닉네임 (IN 쿼리 1번)
+        List<Long> hostIds = chatRooms.stream()
+                .map(ChatRoom::getCreatedBy)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> hostNicknameMap = userRepository.findNicknamesByUserIds(hostIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (String) row[1]
+                ));
+
+        // 현재 사용자가 참여 중인 채팅방 ID (IN 쿼리 1번)
+        java.util.Set<Long> joinedRoomIds = new java.util.HashSet<>(
+                chatRoomMemberRepository.findJoinedRoomIdsByUserId(chatRoomIds, userId));
+
+        // 현재 사용자가 강퇴된 채팅방 ID (IN 쿼리 1번)
+        java.util.Set<Long> kickedRoomIds = new java.util.HashSet<>(
+                chatRoomMemberRepository.findKickedRoomIdsByUserId(chatRoomIds, userId));
+
+        // 지원서, AI 평가, 이력서, 다른 방 참여 여부 — userId+jobMasterId 기준으로 채팅방이 달라도 동일
+        // stream 밖에서 1회만 조회하여 N번 반복 조회 제거
+        Optional<JobApplication> jobApplicationOpt = jobApplicationRepository
+                .findByUserIdAndJobMasterId(userId, jobMasterId);
+
+        JobApplication jobApplication = jobApplicationOpt.orElse(null);
+
+        AiApplicantEvaluation evaluation = null;
+        boolean hasResume = false;
+        Optional<ChatRoomMember> otherRoomMember = Optional.empty();
+
+        if (jobApplication != null) {
+            evaluation = aiApplicationEvaluationRepository
+                    .findByJobApplicationId(jobApplication.getId())
+                    .orElse(null);
+            hasResume = applicationDocumentRepository
+                    .existsByJobApplicationIdAndDocType(jobApplication.getId(), ApplicationDocumentType.RESUME);
+            otherRoomMember = chatRoomMemberRepository
+                    .findByJobApplicationIdAndNotKicked(jobApplication.getId());
+        }
+
+        ChatRoomPreloadedData preloadedData = new ChatRoomPreloadedData(
+                participantCountMap,
+                hostNicknameMap,
+                joinedRoomIds,
+                kickedRoomIds,
+                jobApplication,
+                evaluation,
+                hasResume,
+                otherRoomMember
+        );
+
         List<ChatRoomSummaryResponse> summaries = chatRooms.stream()
-                .map(room -> convertToSummary(room, userId))
+                .map(room -> convertToSummary(room, userId, preloadedData))
                 .collect(Collectors.toList());
 
         // 6. 페이징 정보 생성
@@ -392,8 +443,13 @@ public class ChatRoomService {
     public void joinChatRoom(Long chatRoomId, Long userId) {
         log.info("채팅방 입장 시작: chatRoomId={}, userId={}", chatRoomId, userId);
 
-        // 1. 채팅방 존재 확인
-        ChatRoom chatRoom = chatRoomRepository.findByIdNotDeleted(chatRoomId)
+        // 1. 채팅방 조회 + 비관적 락 획득 (SELECT FOR UPDATE)
+        // 변경 이유: 기존 findByIdNotDeleted()는 락 없이 조회하므로
+        //           count() → save() 사이 gap에서 두 트랜잭션이 동시에 정원 체크를 통과하는
+        //           race condition이 발생했음 (k6 테스트로 재현 확인)
+        //           findByIdWithLock()으로 변경하면 첫 번째 트랜잭션이 commit할 때까지
+        //           두 번째 트랜잭션이 대기하므로 정원 체크가 항상 최신 값 기준으로 직렬화됨
+        ChatRoom chatRoom = chatRoomRepository.findByIdWithLock(chatRoomId)
                 .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
 
         // 2. 채팅방 상태 확인 (ACTIVE만 입장 가능)
@@ -483,6 +539,17 @@ public class ChatRoomService {
         log.info("입장 시스템 메시지 생성 완료: chatRoomId={}, userId={}", chatRoomId, userId);
     }
 
+    // 채팅방 종료 여부 확인 (Controller에서 SSE 이벤트 분기용)
+    //
+    // leaveChatRoom()이 void이므로 방장 자동 종료 여부를 Controller에서 알 수 없음.
+    // 반환 타입 변경 없이 Service 시그니처를 유지하면서 Controller가 종료 여부를
+    // 판단할 수 있도록 별도 조회 메서드를 제공.
+    public boolean isRoomClosed(Long chatRoomId) {
+        return chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .map(room -> room.getStatus() == RoomStatus.CLOSED)
+                .orElse(true); // 방이 없으면 종료된 것으로 간주
+    }
+
     // 채팅방 퇴장
     @Transactional
     public void leaveChatRoom(Long chatRoomId, Long userId) {
@@ -502,6 +569,11 @@ public class ChatRoomService {
         //           나가기 시도 시 에러를 던지는 대신 채팅방을 자동 종료
         if (member.getRole() == MemberRole.HOST) {
             log.info("방장의 나가기 시도 → 채팅방 자동 종료: chatRoomId={}, userId={}", chatRoomId, userId);
+
+            // 종료 처리 전에 활성 멤버 조회 (chatRoom.close() 이후에도 kicked_at IS NULL 조건은 유지되므로
+            // 순서 무관하지만, 의도를 명확히 하기 위해 종료 전에 조회)
+            List<ChatRoomMember> activeMembers = chatRoomMemberRepository.findAllActiveMembersByChatRoomId(chatRoomId);
+
             chatRoom.close();
             chatRoomRepository.save(chatRoom);
 
@@ -511,6 +583,18 @@ public class ChatRoomService {
             );
             chatMessageRepository.save(systemMessage);
             log.info("방장 나가기로 인한 채팅방 종료 완료: chatRoomId={}", chatRoomId);
+
+            // 방장 제외 활성 멤버 전원에게 종료 알림 발행
+            activeMembers.stream()
+                    .filter(m -> !m.getUserId().equals(userId))
+                    .forEach(m -> eventPublisher.publishEvent(new ChatRoomNotificationEvent(
+                            m.getUserId(),
+                            "CHAT_ROOM_CLOSED",
+                            chatRoom.getRoomName(),
+                            chatRoomId
+                    )));
+            log.info("채팅방 종료 알림 이벤트 발행 완료 (방장 자동 종료): chatRoomId={}", chatRoomId);
+
             return;
         }
 
@@ -590,6 +674,20 @@ public class ChatRoomService {
         chatMessageRepository.save(systemMessage);
         log.info("강퇴 시스템 메시지 생성 완료: chatRoomId={}, kickedUserId={}",
                 chatRoomId, targetMember.getUserId());
+
+        // 10. 강퇴된 사용자에게 알림 발행
+        // @TransactionalEventListener(AFTER_COMMIT)로 커밋 이후 수신되므로
+        // 트랜잭션 롤백 시 알림이 발송되지 않는다.
+        String chatRoomName = chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .map(ChatRoom::getRoomName)
+                .orElse("채팅방");
+        eventPublisher.publishEvent(new ChatRoomNotificationEvent(
+                targetMember.getUserId(),
+                "CHAT_ROOM_KICKED",
+                chatRoomName,
+                chatRoomId
+        ));
+        log.info("강퇴 알림 이벤트 발행: chatRoomId={}, kickedUserId={}", chatRoomId, targetMember.getUserId());
     }
 
     // 채팅방 종료
@@ -615,6 +713,9 @@ public class ChatRoomService {
         }
 
         // 4. 채팅방 종료
+        // 종료 전에 활성 멤버 조회 (방장 제외 알림 발송용)
+        List<ChatRoomMember> activeMembers = chatRoomMemberRepository.findAllActiveMembersByChatRoomId(chatRoomId);
+
         chatRoom.close();
         chatRoomRepository.save(chatRoom);
         log.info("채팅방 종료 완료: chatRoomId={}", chatRoomId);
@@ -626,6 +727,17 @@ public class ChatRoomService {
         );
         chatMessageRepository.save(systemMessage);
         log.info("종료 시스템 메시지 생성 완료: chatRoomId={}", chatRoomId);
+
+        // 6. 방장 제외 활성 멤버 전원에게 종료 알림 발행
+        activeMembers.stream()
+                .filter(m -> !m.getUserId().equals(userId))
+                .forEach(m -> eventPublisher.publishEvent(new ChatRoomNotificationEvent(
+                        m.getUserId(),
+                        "CHAT_ROOM_CLOSED",
+                        chatRoom.getRoomName(),
+                        chatRoomId
+                )));
+        log.info("채팅방 종료 알림 이벤트 발행 완료 (명시적 종료): chatRoomId={}", chatRoomId);
     }
 
     // 채팅방 멤버 목록 조회
@@ -643,12 +755,45 @@ public class ChatRoomService {
         // 3. 활성 멤버 목록 조회 (HOST 우선, 입장 시간 오름차순)
         List<ChatRoomMember> members = chatRoomMemberRepository.findAllActiveMembersByChatRoomId(chatRoomId);
 
-        // 4. 각 멤버의 닉네임 조회 및 DTO 변환
+        // 4. 닉네임 + profileImageFileId 일괄 조회 후 DTO 변환
+        // 개선: 기존 닉네임만 조회하던 방식에서 profileImageFileId 포함 조회로 변경
+        //       유저 프로필 이미지 변경 시 채팅방 멤버 목록에 반영되지 않던 문제 해결
+        List<Long> userIds = members.stream()
+                .map(ChatRoomMember::getUserId)
+                .collect(Collectors.toList());
+
+        // userId → [nickname, profileImageFileId] 맵 구성 (IN 쿼리 1번)
+        Map<Long, String> nicknameMap = new java.util.HashMap<>();
+        Map<Long, Long> profileImageFileIdMap = new java.util.HashMap<>();
+
+        userRepository.findNicknameAndProfileImageByUserIds(userIds)
+                .forEach(row -> {
+                    Long uid = (Long) row[0];
+                    nicknameMap.put(uid, (String) row[1]);
+                    profileImageFileIdMap.put(uid, (Long) row[2]);
+                });
+
+        // presigned URL 생성 (profileImageFileId가 있는 경우에만)
+        // 만료 시간 10분: 멤버 목록은 자주 갱신되므로 짧게 설정
+        Duration profileUrlExpiration = Duration.ofMinutes(10);
+        Map<Long, String> profileImageUrlMap = new java.util.HashMap<>();
+        profileImageFileIdMap.forEach((uid, fileId) -> {
+            if (fileId != null) {
+                try {
+                    String url = s3FileManagementService.generatePresignedUrl(fileId, profileUrlExpiration);
+                    profileImageUrlMap.put(uid, url);
+                } catch (Exception e) {
+                    // 파일이 삭제되었거나 S3 오류 시 해당 유저의 이미지는 null로 처리
+                    log.warn("프로필 이미지 URL 생성 실패: userId={}, fileId={}", uid, fileId);
+                }
+            }
+        });
+
         List<ChatRoomMemberResponse> memberResponses = members.stream()
                 .map(member -> {
-                    String nickname = userRepository.findNicknameByUserId(member.getUserId())
-                            .orElse("알 수 없음");
-                    return ChatRoomMemberResponse.of(member, nickname);
+                    String nickname = nicknameMap.getOrDefault(member.getUserId(), "알 수 없음");
+                    String profileImageUrl = profileImageUrlMap.get(member.getUserId());
+                    return ChatRoomMemberResponse.of(member, nickname, profileImageUrl);
                 })
                 .collect(Collectors.toList());
 
@@ -656,9 +801,71 @@ public class ChatRoomService {
 
         return ChatRoomMemberListResponse.of(memberResponses);
     }
+    // 채팅방 멤버 단건 조회
+    // 추가 근거: GET /api/v1/chat-rooms/{chatRoomId}/members/{chatRoomMemberId} 핸들러 신규 구현에 따라
+    //           목록 조회(getChatRoomMembers)와 동일한 권한 검증·presigned URL 생성 패턴을 단건에 적용
+    //           chatRoomId 교차 검증을 포함해 다른 방 멤버를 조회하는 부정 접근 방어
+    public ChatRoomMemberResponse getChatRoomMember(Long chatRoomId, Long requestUserId, Long chatRoomMemberId) {
+        log.info("채팅방 멤버 단건 조회 시작: chatRoomId={}, requestUserId={}, chatRoomMemberId={}",
+                chatRoomId, requestUserId, chatRoomMemberId);
+
+        // 1. 채팅방 존재 확인
+        chatRoomRepository.findByIdNotDeleted(chatRoomId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        // 2. 요청자가 채팅방 멤버인지 확인 (권한 검증 — getChatRoomMembers와 동일한 패턴)
+        chatRoomMemberRepository.findByChatRoomIdAndUserIdAndKickedAtIsNull(chatRoomId, requestUserId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED));
+
+        // 3. 대상 멤버 조회 (강퇴되지 않은 활성 멤버만)
+        ChatRoomMember member = chatRoomMemberRepository
+                .findByChatRoomMemberIdAndKickedAtIsNull(chatRoomMemberId)
+                .orElseThrow(() -> new ApiException(ErrorCode.CHAT_MEMBER_NOT_FOUND));
+
+        // 4. chatRoomId 교차 검증: 해당 멤버가 요청 chatRoom 소속인지 확인
+        //    의도: /chat-rooms/1/members/2 호출 시 memberId=2가 chatRoom=99 소속이어도 조회 가능한
+        //          보안 취약점을 차단
+        if (!member.getChatRoomId().equals(chatRoomId)) {
+            log.warn("chatRoomId 불일치: 요청 chatRoomId={}, 실제 chatRoomId={}, chatRoomMemberId={}",
+                    chatRoomId, member.getChatRoomId(), chatRoomMemberId);
+            throw new ApiException(ErrorCode.CHAT_MEMBER_NOT_FOUND);
+        }
+
+        // 5. 닉네임 + profileImageFileId 조회 (목록 조회와 동일 방식)
+        List<Long> userIds = List.of(member.getUserId());
+        Map<Long, String> nicknameMap = new java.util.HashMap<>();
+        Map<Long, Long> profileImageFileIdMap = new java.util.HashMap<>();
+
+        userRepository.findNicknameAndProfileImageByUserIds(userIds)
+                .forEach(row -> {
+                    Long uid = (Long) row[0];
+                    nicknameMap.put(uid, (String) row[1]);
+                    profileImageFileIdMap.put(uid, (Long) row[2]);
+                });
+
+        // 6. presigned URL 생성 (profileImageFileId가 있는 경우에만)
+        //    만료 10분: 멤버 단건 조회도 목록과 동일한 만료 시간 정책 적용
+        String profileImageUrl = null;
+        Long fileId = profileImageFileIdMap.get(member.getUserId());
+        if (fileId != null) {
+            try {
+                profileImageUrl = s3FileManagementService.generatePresignedUrl(fileId, Duration.ofMinutes(10));
+            } catch (Exception e) {
+                log.warn("프로필 이미지 URL 생성 실패: userId={}, fileId={}", member.getUserId(), fileId);
+            }
+        }
+
+        String nickname = nicknameMap.getOrDefault(member.getUserId(), "알 수 없음");
+        ChatRoomMemberResponse response = ChatRoomMemberResponse.of(member, nickname, profileImageUrl);
+
+        log.info("채팅방 멤버 단건 조회 완료: chatRoomId={}, chatRoomMemberId={}", chatRoomId, chatRoomMemberId);
+        return response;
+    }
+
     // 내가 참여 중인 채팅방 목록 조회
     // 사용자는 본인이 참여 중인 채팅방 리스트를 확인할 수 있어야 함
     // 최신 참여 순으로 정렬하여 활동성 높은 채팅방을 우선 표시
+    // 개선: stream 내 4번 반복 조회(4N+1) → chatRoomId 기반 IN 쿼리 4번 고정으로 대체
     public MyChatRoomListResponse getMyChatRooms(
             Long userId,
             Long cursor,
@@ -682,33 +889,89 @@ public class ChatRoomService {
                 ? members.subList(0, size)
                 : members;
 
-        // 3. 각 멤버십에 대해 채팅방 정보 조회 및 DTO 변환
+        if (actualMembers.isEmpty()) {
+            return MyChatRoomListResponse.builder()
+                    .chatRooms(List.of())
+                    .pagination(PaginationResponse.builder()
+                            .nextCursor(null)
+                            .hasNext(false)
+                            .size(0)
+                            .build())
+                    .build();
+        }
+
+        // 3. chatRoomId 목록 추출 — 이후 4개 IN 쿼리의 공통 키
+        List<Long> chatRoomIds = actualMembers.stream()
+                .map(ChatRoomMember::getChatRoomId)
+                .collect(Collectors.toList());
+
+        // ── IN 쿼리 일괄 조회 (채팅방 수와 무관하게 각 1번씩, 총 4번) ──────────────
+
+        // 3-1. 채팅방 정보 일괄 조회
+        // 개선 근거: stream 내 findById() N번 → IN 쿼리 1번
+        Map<Long, ChatRoom> chatRoomMap = chatRoomRepository
+                .findAllByChatRoomIdIn(chatRoomIds)
+                .stream()
+                .collect(Collectors.toMap(ChatRoom::getChatRoomId, cr -> cr));
+
+        // 3-2. 채팅방별 현재 인원 수 일괄 조회
+        // 개선 근거: countByChatRoomIdAndKickedAtIsNull() N번 → IN 쿼리 1번 (8N+1 작업 시 추가된 메서드 재사용)
+        Map<Long, Long> participantCountMap = chatRoomMemberRepository
+                .countByChatRoomIds(chatRoomIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (Long) row[1]
+                ));
+
+        // 3-3. 방장 닉네임 일괄 조회
+        // 개선 근거: findNicknameByUserId() N번 → IN 쿼리 1번 (8N+1 작업 시 추가된 메서드 재사용)
+        List<Long> hostIds = chatRoomMap.values().stream()
+                .map(ChatRoom::getCreatedBy)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> hostNicknameMap = userRepository
+                .findNicknamesByUserIds(hostIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (String) row[1]
+                ));
+
+        // 3-4. 채팅방별 마지막 메시지 일괄 조회
+        // 개선 근거: findTopByChatRoomIdOrderBySentAtDesc() N번 → IN + 서브쿼리 1번
+        Map<Long, ChatMessage> lastMessageMap = chatMessageRepository
+                .findLastMessagesByChatRoomIds(chatRoomIds)
+                .stream()
+                .collect(Collectors.toMap(ChatMessage::getChatRoomId, msg -> msg));
+
+        // ─────────────────────────────────────────────────────────────────────
+        // 4. stream 내에서는 Map 조회만 수행 (DB 쿼리 0번)
+        // 개선 근거: 기존에는 채팅방마다 4번 DB 조회 발생 → Map.get()으로 대체하여 쿼리 제거
         List<MyChatRoomResponse> chatRoomResponses = actualMembers.stream()
                 .map(member -> {
-                    // 채팅방 정보 조회
-                    ChatRoom chatRoom = chatRoomRepository.findById(member.getChatRoomId())
-                            .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+                    ChatRoom chatRoom = chatRoomMap.get(member.getChatRoomId());
+                    if (chatRoom == null) {
+                        // 조회 시점과 삭제 시점 사이 race condition 방어 처리
+                        log.warn("멤버십은 있으나 채팅방을 찾을 수 없음: chatRoomId={}", member.getChatRoomId());
+                        return null;
+                    }
 
-                    // 현재 인원 수 조회
-                    long currentParticipants = chatRoomMemberRepository
-                            .countByChatRoomIdAndKickedAtIsNull(chatRoom.getChatRoomId());
+                    long currentParticipants = participantCountMap
+                            .getOrDefault(chatRoom.getChatRoomId(), 0L);
 
-                    // 방장 닉네임 조회
-                    String hostNickname = userRepository.findNicknameByUserId(chatRoom.getCreatedBy())
-                            .orElse("알 수 없음");
+                    String hostNickname = hostNicknameMap
+                            .getOrDefault(chatRoom.getCreatedBy(), "알 수 없음");
 
-                    // 마지막 메시지 조회 (선택)
-                    Optional<ChatMessage> lastMessageOpt = chatMessageRepository
-                            .findTopByChatRoomIdOrderBySentAtDesc(chatRoom.getChatRoomId());
+                    ChatMessage lastMessage = lastMessageMap.get(chatRoom.getChatRoomId());
 
-                    String lastMessagePreview = lastMessageOpt
+                    String lastMessagePreview = Optional.ofNullable(lastMessage)
                             .map(msg -> {
                                 if (msg.getMessageType().name().equals("FILE")) {
                                     return "[파일]";
                                 } else if (msg.getMessageType().name().equals("SYSTEM")) {
                                     return msg.getContent();
                                 } else {
-                                    // TEXT 메시지는 50자로 제한
                                     String content = msg.getContent();
                                     return content.length() > 50
                                             ? content.substring(0, 50) + "..."
@@ -717,7 +980,7 @@ public class ChatRoomService {
                             })
                             .orElse(null);
 
-                    LocalDateTime lastMessageAt = lastMessageOpt
+                    LocalDateTime lastMessageAt = Optional.ofNullable(lastMessage)
                             .map(ChatMessage::getSentAt)
                             .orElse(null);
 
@@ -738,18 +1001,19 @@ public class ChatRoomService {
                             .joinedAt(member.getJoinedAt())
                             .build();
                 })
+                .filter(response -> response != null)
                 .collect(Collectors.toList());
 
-        // 4. 다음 커서 계산 (마지막 멤버의 chatRoomMemberId)
+        // 5. 다음 커서 계산 (마지막 멤버의 chatRoomMemberId)
         Long nextCursor = hasNext && !actualMembers.isEmpty()
                 ? actualMembers.get(actualMembers.size() - 1).getChatRoomMemberId()
                 : null;
 
-        // 5. 페이징 정보 생성
+        // 6. 페이징 정보 생성
         PaginationResponse pagination = PaginationResponse.builder()
                 .nextCursor(nextCursor)
                 .hasNext(hasNext)
-                .size(actualMembers.size())
+                .size(chatRoomResponses.size())
                 .build();
 
         log.info("내 채팅방 목록 조회 완료: userId={}, 조회된 방 수={}, hasNext={}",

@@ -10,7 +10,10 @@ import com.thunder11.scuad.auth.repository.UserRepository;
 import com.thunder11.scuad.chat.domain.type.MessageType;
 import com.thunder11.scuad.chat.dto.request.MessageSendRequest;
 import com.thunder11.scuad.file.repository.FileObjectRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,8 +45,24 @@ public class ChatMessageService {
     private final FileObjectRepository fileObjectRepository;
     private final S3FileManagementService s3FileManagementService;
 
+    // Redis Pub/Sub 전환 근거:
+    //   기존 SimpMessagingTemplate은 서버 내부 In-Memory 브로커로만 브로드캐스트
+    //   → 다중 서버 환경에서 메시지 수신자가 다른 서버에 연결된 경우 유실 발생 (실측 40%)
+    //   Redis publish → 모든 서버의 RedisSubscriber가 수신 → WebSocket 브로드캐스트
+    //   → 서버 연결과 무관하게 전파 보장
+    //
+    // @Autowired(required = false) 적용 근거:
+    //   RedisPubSubConfig가 @ConditionalOnProperty로 조건부 로드되므로
+    //   Redis 비활성화 환경(테스트, 로컬)에서는 chatRedisTemplate 빈이 존재하지 않음
+    //   required = false로 설정하여 빈이 없어도 컨텍스트 로드 성공하도록 처리
+    //   실제 broadcast() 호출 시 null 체크로 안전하게 처리
+    @Autowired(required = false)
+    @Qualifier("chatRedisTemplate")
+    private RedisTemplate<String, Object> redisTemplate;
+
     private record FileInfo(Long fileId, String fileName, String contentType, Long fileSize) {
     }
+
     // ChatMessage -> ChatMessageResponse 변환
     private ChatMessageResponse convertToResponse(ChatMessage message, Map<Long, String> nicknameMap, Map<Long, FileInfo> fileInfoMap) {
         // 발신자 닉네임 조회
@@ -92,16 +111,16 @@ public class ChatMessageService {
                 .build();
     }
 
-    // 채팅 메시지 목록 조회 (커서 기반 페이징 + 폴링)
+    // 채팅 메시지 목록 조회 (커서 기반 페이징) — 입장 시 과거 메시지 로드 전용
+    // 신규 메시지 수신은 WebSocket 구독(/topic/chat-rooms/{id})으로 처리
     public ChatMessageListResponse getMessages(
             Long chatRoomId,
             Long userId,
             Long cursor,
-            Long since,
             int size
     ) {
-        log.info("메시지 목록 조회 시작: chatRoomId={}, userId={}, cursor={}, since={}, size={}",
-                chatRoomId, userId, cursor, since, size);
+        log.info("메시지 목록 조회 시작: chatRoomId={}, userId={}, cursor={}, size={}",
+                chatRoomId, userId, cursor, size);
 
         // 1. 채팅방 존재 확인
         chatRoomRepository.findByIdNotDeleted(chatRoomId)
@@ -117,47 +136,29 @@ public class ChatMessageService {
             throw new ApiException(ErrorCode.CHAT_ROOM_ACCESS_DENIED);
         }
 
-        // 3. since와 cursor 동시 사용 검증
-        if (since != null && cursor != null) {
-            log.warn("since와 cursor를 동시에 사용할 수 없습니다: chatRoomId={}, userId={}", chatRoomId, userId);
-            throw new ApiException(ErrorCode.INVALID_INPUT_VALUE);
+
+        // WebSocket 전환으로 since 기반 폴링 제거
+        // 신규 메시지 수신은 WebSocket 구독(/topic/chat-rooms/{id})으로 처리
+        // 이 API는 채팅방 입장 시 과거 메시지 로드(커서 페이징) 용도로만 사용
+        List<ChatMessage> messages = chatMessageRepository.findMessagesByChatRoomIdWithCursor(
+                chatRoomId,
+                cursor,
+                PageRequest.of(0, size + 1)
+        );
+        log.info("과거 메시지 조회 완료: {}개", messages.size());
+
+        // 페이징 정보 계산
+        boolean hasNext = messages.size() > size;
+        if (hasNext) {
+            messages = messages.subList(0, size);
         }
 
-        List<ChatMessage> messages;
-        boolean isPolling = (since != null);
-
-        // 4. 폴링 요청인지 과거 메시지 로드인지 구분
-        if (isPolling) {
-            // 폴링: since 이후의 최신 메시지 조회
-            messages = chatMessageRepository.findNewMessagesSince(chatRoomId, since);
-            log.info("폴링 메시지 조회 완료: {}개", messages.size());
-        } else {
-            // 과거 메시지 로드: 커서 기반 페이징
-            messages = chatMessageRepository.findMessagesByChatRoomIdWithCursor(
-                    chatRoomId,
-                    cursor,
-                    PageRequest.of(0, size + 1)
-            );
-            log.info("과거 메시지 조회 완료: {}개", messages.size());
+        Long nextCursor = null;
+        if (hasNext && !messages.isEmpty()) {
+            nextCursor = messages.get(messages.size() - 1).getMessageId();
         }
 
-        // 5. 페이징 정보 계산 (폴링이 아닐 때만)
-        PaginationResponse pagination = null;
-
-        if (!isPolling) {
-            boolean hasNext = messages.size() > size;
-            if (hasNext) {
-                messages = messages.subList(0, size);
-            }
-
-            Long nextCursor = null;
-            if (hasNext && !messages.isEmpty()) {
-                nextCursor = messages.get(messages.size() - 1).getMessageId();
-            }
-
-            pagination = PaginationResponse.of(nextCursor, hasNext, messages.size());
-        }
-
+        PaginationResponse pagination = PaginationResponse.of(nextCursor, hasNext, messages.size());
         // 6. 발신자 닉네임 일괄 조회 (N+1 문제 해결)
         List<Long> senderIds = messages.stream()
                 .map(ChatMessage::getSenderId)
@@ -204,7 +205,7 @@ public class ChatMessageService {
                 .map(message -> convertToResponse(message, finalNicknameMap, finalFileInfoMap))
                 .collect(Collectors.toList());
 
-        log.info("메시지 목록 조회 완료: 총 {}개, 폴링={}", messageResponses.size(), isPolling);
+        log.info("메시지 목록 조회 완료: 총 {}개", messageResponses.size());
 
         return ChatMessageListResponse.of(messageResponses, pagination);
     }
@@ -219,9 +220,17 @@ public class ChatMessageService {
         log.info("메시지 전송 시작: chatRoomId={}, userId={}, messageType={}",
                 chatRoomId, userId, request.getMessageType());
 
-        // 1. 채팅방 존재 확인
-        chatRoomRepository.findByIdNotDeleted(chatRoomId)
+        // 1. 채팅방 존재 및 ACTIVE 상태 확인
+        // 수정 근거: findByIdNotDeleted는 deletedAt IS NULL만 체크하여 CLOSED 방도 반환함.
+        //           CLOSED 방에서 내역 조회(getMessages)는 허용하되 메시지 전송은 차단해야 하므로
+        //           sendMessage에서만 status = ACTIVE 조건을 추가로 검증.
+        com.thunder11.scuad.chat.domain.ChatRoom chatRoom = chatRoomRepository.findByIdNotDeleted(chatRoomId)
                 .orElseThrow(() -> new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        if (chatRoom.getStatus() != com.thunder11.scuad.chat.domain.type.RoomStatus.ACTIVE) {
+            log.warn("종료된 채팅방에 메시지 전송 시도: chatRoomId={}, userId={}", chatRoomId, userId);
+            throw new ApiException(ErrorCode.CHAT_ROOM_NOT_FOUND);
+        }
 
         // 2. 멤버십 확인 (참여자만 메시지 전송 가능)
         boolean isMember = chatRoomMemberRepository
@@ -304,6 +313,31 @@ public class ChatMessageService {
             }
         }
 
-        return convertToResponse(savedMessage, nicknameMap, fileInfoMap);
+        ChatMessageResponse result = convertToResponse(savedMessage, nicknameMap, fileInfoMap);
+
+        return result;
+    }
+
+    // WebSocket 브로드캐스트 — @Transactional 밖에서 호출해야 함
+    //
+    // 분리 근거:
+    //   sendMessage()는 @Transactional 메서드이므로, 메서드 내부에서 publish를 호출하면
+    //   트랜잭션 커밋 전에 브로드캐스트가 발생한다.
+    //   이 경우 메시지를 받은 클라이언트가 즉시 GET /messages를 호출하면
+    //   아직 커밋되지 않은 데이터를 조회하여 메시지가 누락되는 레이스 컨디션이 발생한다.
+    //
+    // 호출 위치: ChatRoomController.sendMessage() — sendMessage() 리턴 후 즉시 호출
+    //   sendMessage() 리턴 시점 = 트랜잭션 커밋 완료 시점이므로 레이스 컨디션 해소
+    //
+    // Redis 채널명 규칙: chat-room:{chatRoomId}
+    //   RedisSubscriber가 PatternTopic("chat-room:*")으로 구독하므로 패턴 일치 필요
+    public void broadcast(Long chatRoomId, ChatMessageResponse result) {
+        if (redisTemplate == null) {
+            log.warn("Redis Pub/Sub 비활성화 상태 — 브로드캐스트 스킵: chatRoomId={}", chatRoomId);
+            return;
+        }
+        String channel = "chat-room:" + chatRoomId;
+        redisTemplate.convertAndSend(channel, result);
+        log.info("Redis Pub/Sub 브로드캐스트 완료: channel={}, messageId={}", channel, result.getMessageId());
     }
 }

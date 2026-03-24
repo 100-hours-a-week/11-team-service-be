@@ -5,5 +5,5 @@ public enum AnalysisType {
     RESUME,
     PORTFOLIO,
     COMPARISON,
-    ALL
+    JOBPOSTING
 }

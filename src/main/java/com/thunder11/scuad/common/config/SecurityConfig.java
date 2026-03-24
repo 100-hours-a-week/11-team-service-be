@@ -1,7 +1,13 @@
 package com.thunder11.scuad.common.config;
 
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,6 +39,33 @@ public class SecurityConfig {
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
+    // 인증 실패 EntryPoint: 토큰이 없거나 만료된 경우 401 반환
+    @Bean
+    public AuthenticationEntryPoint authenticationEntryPoint() {
+        return (request, response, authException) -> {
+            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8");
+            response.getWriter().write(
+                    new ObjectMapper().writeValueAsString(Map.of(
+                            "status", 401,
+                            "code", "UNAUTHORIZED",
+                            "message", "인증이 필요합니다.")));
+        };
+    }
+
+    @Bean
+    public AccessDeniedHandler accessDeniedHandler() {
+        return (request, response, accessDeniedException) -> {
+            response.setStatus(HttpStatus.FORBIDDEN.value());
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8");
+            response.getWriter().write(
+                    new ObjectMapper().writeValueAsString(Map.of(
+                            "status", 403,
+                            "code", "FORBIDDEN",
+                            "message", "권한이 없습니다.")));
+        };
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -47,14 +80,31 @@ public class SecurityConfig {
 
                 // URL별 권한 설정
                 .authorizeHttpRequests(auth -> auth
+                        // SSE 비동기 해제 등 내부 통신 허용 (이거 없으면 SSE 종료 시 Access Denied 에러 도배 발생)
+                        .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC,
+                                jakarta.servlet.DispatcherType.ERROR, jakarta.servlet.DispatcherType.FORWARD)
+                        .permitAll()
+
                         // 카카오 OAuth 관련 URL은 모두 퍼블릭 허용
                         .requestMatchers("/api/v1/auth/kakao/**").permitAll()
+                        // 토큰 재발급은 accessToken이 만료된 상태에서 호출되므로 인증 없이 허용
+                        // JwtAuthenticationFilter가 먼저 실행되어 만료된 accessToken을 거부하면
+                        // refresh 엔드포인트까지 도달하지 못해 401이 반환되는 문제를 방지
+                        .requestMatchers("/api/v1/auth/refresh").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-postings").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/job-postings/{jobMasterId}").permitAll()
                         // 헬스 체크는 퍼블릭 허용
                         .requestMatchers("/api/health").permitAll()
+                        // [로컬 전용] 부하 테스트용 토큰 발급 API
+                        .requestMatchers("/api/test/**").permitAll()
+                        .requestMatchers("/api/internal/**").permitAll()
                         // Actuator 엔드포인트 퍼블릭 허용
                         .requestMatchers("/actuator/**").permitAll()
+                        // WebSocket 핸드셰이크 경로 허용
+                        // /ws/** 로 설정하는 이유: SockJS가 /ws/info, /ws/{serverId}/{sessionId}/websocket 등
+                        // 하위 경로를 추가로 사용하기 때문에 /** 패턴으로 전체 허용
+                        // 실제 인증은 SecurityConfig가 아니라 WebSocketAuthInterceptor에서 처리
+                        .requestMatchers("/ws/**").permitAll()
                         // 채용공고 조회는 퍼블릭 허용 (임시)
                         .requestMatchers("/api/v1/job-postings/**").permitAll()
                         .requestMatchers("/api/v1/job-postings").permitAll()
@@ -69,7 +119,14 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
 
                 // JWT 인증 필터 추가 (UsernamePasswordAuthenticationFilter 앞에 배치)
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+
+                // 인증/인가 실패 시 커스텀 핸들러 등록
+                // - 401: 토큰 없음/만료 (프론트에서 자동 재발급 시도 트리거)
+                // - 403: 인증은 됐지만 권한 없음 (재발급 없이 에러 처리)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authenticationEntryPoint())
+                        .accessDeniedHandler(accessDeniedHandler()));
 
         return http.build();
     }

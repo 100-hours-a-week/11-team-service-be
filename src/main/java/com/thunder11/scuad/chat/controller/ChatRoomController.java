@@ -18,6 +18,7 @@ import com.thunder11.scuad.auth.security.UserPrincipal;
 import com.thunder11.scuad.chat.service.ChatMessageService;
 import com.thunder11.scuad.chat.service.ChatRoomService;
 import com.thunder11.scuad.common.response.ApiResponse;
+import com.thunder11.scuad.infra.redis.SseEventPublisher;
 
 // 채팅방 관련 API 컨트롤러
 @Slf4j
@@ -31,6 +32,7 @@ public class ChatRoomController {
     private final com.thunder11.scuad.file.service.FileStorageService fileStorageService;
     private final ChatMemberDocumentService chatMemberDocumentService;
     private final ChatMemberComparisonService chatMemberComparisonService;
+    private final SseEventPublisher sseEventPublisher;
 
     // 공고별 채팅방 목록 조회
     @GetMapping("/job-postings/{jobMasterId}/chat-rooms")
@@ -115,6 +117,11 @@ public class ChatRoomController {
 
         chatRoomService.joinChatRoom(chatRoomId, userPrincipal.getUserId());
 
+        // 트랜잭션 커밋 완료 후 SSE 이벤트 publish
+        // joinChatRoom() 리턴 = 커밋 완료 시점이므로 이 시점 이후 publish해야
+        // 클라이언트가 이벤트 수신 후 멤버 목록 재조회 시 최신 데이터를 받을 수 있음
+        sseEventPublisher.publishMemberJoined(chatRoomId);
+
         return ApiResponse.of(
                 HttpStatus.OK.value(),
                 "CHAT_ROOM_JOINED",
@@ -149,18 +156,17 @@ public class ChatRoomController {
     public ApiResponse<ChatMessageListResponse> getMessages(
             @PathVariable Long chatRoomId,
             @RequestParam(required = false) Long cursor,
-            @RequestParam(required = false) Long since,
             @RequestParam(defaultValue = "50") int size,
             @AuthenticationPrincipal UserPrincipal userPrincipal
     ) {
-        log.info("GET /api/v1/chat-rooms/{}/messages - cursor={}, since={}, size={}, userId={}",
-                chatRoomId, cursor, since, size, userPrincipal.getUserId());
+        // WebSocket 전환으로 since 파라미터 제거 — 신규 메시지는 WebSocket으로 수신
+        log.info("GET /api/v1/chat-rooms/{}/messages - cursor={}, size={}, userId={}",
+                chatRoomId, cursor, size, userPrincipal.getUserId());
 
         ChatMessageListResponse response = chatMessageService.getMessages(
                 chatRoomId,
                 userPrincipal.getUserId(),
                 cursor,
-                since,
                 size
         );
 
@@ -187,7 +193,17 @@ public class ChatRoomController {
                 chatRoomId, messageType, content, (file != null), userPrincipal.getUserId());
 
         // MessageType 변환
-        MessageType msgType = MessageType.valueOf(messageType.toUpperCase());
+        // 잘못된 값(예: "TEXT" 아닌 임의 문자열) 입력 시 valueOf()가 IllegalArgumentException을 던져
+        // GlobalExceptionHandler가 처리하지 못하면 500이 반환되므로 명시적으로 400 처리
+        MessageType msgType;
+        try {
+            msgType = MessageType.valueOf(messageType.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("유효하지 않은 messageType 입력: {}", messageType);
+            throw new com.thunder11.scuad.common.exception.ApiException(
+                    com.thunder11.scuad.common.exception.ErrorCode.INVALID_INPUT_VALUE
+            );
+        }
         
         Long fileId = null;
         
@@ -229,10 +245,42 @@ public class ChatRoomController {
                 request
         );
 
+        // 트랜잭션 커밋 완료 후 브로드캐스트
+        // sendMessage() 리턴 = 트랜잭션 커밋 완료 시점
+        // 이 시점 이후에 broadcast해야 수신 클라이언트의 GET /messages에서 메시지 누락 없음
+        chatMessageService.broadcast(chatRoomId, response);
+
         return ApiResponse.of(
                 HttpStatus.CREATED.value(),
                 "MESSAGE_SENT",
                 "메시지 전송 완료",
+                response
+        );
+    }
+
+    // 채팅방 멤버 단건 조회
+    // 추가 근거: 프론트에서 특정 멤버 정보를 개별 조회해야 하는 케이스(예: 프로필 진입)가 존재하고,
+    //           기존 목록 API만으로는 단건 갱신이 불필요하게 무거움.
+    //           500 오류 재현 원인이 이 핸들러의 미구현이었으므로 신규 추가.
+    @GetMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}")
+    public ApiResponse<ChatRoomMemberResponse> getChatRoomMember(
+            @PathVariable Long chatRoomId,
+            @PathVariable Long chatRoomMemberId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("GET /api/v1/chat-rooms/{}/members/{} - userId={}",
+                chatRoomId, chatRoomMemberId, userPrincipal.getUserId());
+
+        ChatRoomMemberResponse response = chatRoomService.getChatRoomMember(
+                chatRoomId,
+                userPrincipal.getUserId(),
+                chatRoomMemberId
+        );
+
+        return ApiResponse.of(
+                HttpStatus.OK.value(),
+                "SUCCESS",
+                "멤버 단건 조회 성공",
                 response
         );
     }
@@ -247,6 +295,15 @@ public class ChatRoomController {
                 chatRoomId, userPrincipal.getUserId());
 
         chatRoomService.leaveChatRoom(chatRoomId, userPrincipal.getUserId());
+
+        // leaveChatRoom()은 void이므로 방장 자동 종료 여부를 직접 알 수 없음.
+        // 커밋 완료 후 채팅방 상태를 조회하여 CLOSED면 ROOM_CLOSED, 아니면 MEMBER_LEFT publish.
+        if (chatRoomService.isRoomClosed(chatRoomId)) {
+            sseEventPublisher.publishRoomClosed(chatRoomId);
+        } else {
+            sseEventPublisher.publishMemberLeft(chatRoomId);
+        }
+
 
         return ApiResponse.of(
                 HttpStatus.OK.value(),
@@ -267,6 +324,12 @@ public class ChatRoomController {
 
         chatRoomService.kickMember(chatRoomId, userPrincipal.getUserId(), chatRoomMemberId);
 
+        // kickMember()는 chatRoomMemberId 기준으로 강퇴하므로
+        // 강퇴된 userId를 Controller에서 직접 알 수 없음.
+        // SseEventPublisher.publishMemberKicked()는 chatRoomMemberId를 받아
+        // 내부에서 userId를 조회하는 방식으로 처리.
+        sseEventPublisher.publishMemberKicked(chatRoomId, chatRoomMemberId);
+
         return ApiResponse.of(
                 HttpStatus.OK.value(),
                 "MEMBER_KICKED",
@@ -284,6 +347,8 @@ public class ChatRoomController {
                 chatRoomId, userPrincipal.getUserId());
 
         chatRoomService.closeChatRoom(chatRoomId, userPrincipal.getUserId());
+
+        sseEventPublisher.publishRoomClosed(chatRoomId);
 
         return ApiResponse.of(
                 HttpStatus.OK.value(),
@@ -364,9 +429,33 @@ public class ChatRoomController {
         );
     }
 
-    // 채팅방 멤버와 나의 AI 비교 분석
+    // 채팅방 멤버와 AI 비교 분석 요청 (비동기)
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @PostMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}/comparison")
+    public ApiResponse<Void> requestComparison(
+            @PathVariable Long chatRoomId,
+            @PathVariable Long chatRoomMemberId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal
+    ) {
+        log.info("POST /api/v1/chat-rooms/{}/members/{}/comparison - userId={}",
+                chatRoomId, chatRoomMemberId, userPrincipal.getUserId());
+
+        chatMemberComparisonService.requestComparison(
+                chatRoomId,
+                userPrincipal.getUserId(),
+                chatRoomMemberId
+        );
+
+        return ApiResponse.of(
+                HttpStatus.ACCEPTED.value(),
+                "COMPARISON_REQUESTED",
+                "비교 분석 요청이 접수되었습니다. 잠시 후 결과를 조회해주세요."
+        );
+    }
+
+    // 채팅방 멤버와 AI 비교 분석 결과 조회
     @GetMapping("/chat-rooms/{chatRoomId}/members/{chatRoomMemberId}/comparison")
-    public ApiResponse<ComparisonResponse> compareWithMember(
+    public ApiResponse<ComparisonResponse> getComparisonResult(
             @PathVariable Long chatRoomId,
             @PathVariable Long chatRoomMemberId,
             @AuthenticationPrincipal UserPrincipal userPrincipal
@@ -374,7 +463,7 @@ public class ChatRoomController {
         log.info("GET /api/v1/chat-rooms/{}/members/{}/comparison - userId={}",
                 chatRoomId, chatRoomMemberId, userPrincipal.getUserId());
 
-        ComparisonResponse response = chatMemberComparisonService.compare(
+        ComparisonResponse response = chatMemberComparisonService.getComparisonResult(
                 chatRoomId,
                 userPrincipal.getUserId(),
                 chatRoomMemberId
@@ -388,3 +477,5 @@ public class ChatRoomController {
         );
     }
 }
+
+

@@ -13,6 +13,9 @@ import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +44,13 @@ import com.thunder11.scuad.jobposting.repository.JobMasterRepository;
 import com.thunder11.scuad.jobposting.repository.JobPostRepository;
 import com.thunder11.scuad.jobposting.repository.SkillAliasRepository;
 import com.thunder11.scuad.jobposting.repository.SkillRepository;
+import com.thunder11.scuad.auth.domain.User;
+import com.thunder11.scuad.auth.repository.UserRepository;
+import com.thunder11.scuad.jobposting.domain.AiEvalJob;
+import com.thunder11.scuad.jobposting.domain.type.AiJobStatus;
+import com.thunder11.scuad.jobposting.domain.type.AnalysisType;
+import com.thunder11.scuad.jobposting.event.AiJobPostingAnalysisCreateEvent;
+import com.thunder11.scuad.jobposting.repository.AiEvalJobRepository;
 
 @Slf4j
 @Service
@@ -55,11 +65,13 @@ public class JobPostingAnalysisService {
     private final SkillRepository skillRepository;
     private final SkillAliasRepository skillAliasRepository;
     private final JobPostingManagementService jobPostingManagementService;
+    private final AiEvalJobRepository aiEvalJobRepository;
+    private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public JobAnalysisResultResponse analyze(String url, Long userId) {
         log.info("Analyzing URL: {}", url);
-
         String normalizedUrl = normalizeUrl(url);
         String sourceUrlHash = generateHash(normalizedUrl);
 
@@ -68,11 +80,9 @@ public class JobPostingAnalysisService {
             JobPost jobPost = existingJobPost.get();
             JobMaster jobMaster = jobPost.getJobMaster();
 
-            // If DRAFT and same user -> Delete and re-analyze
             if (jobPost.getRegistrationStatus() == RegistrationStatus.DRAFT && jobPost.getCreatedBy().equals(userId)) {
                 log.info("기존 DRAFT 공고 삭제 후 재분석: ID {}", jobPost.getId());
                 jobPostingManagementService.deleteJobPosting(jobMaster.getId(), userId);
-                // Proceed to new analysis below...
             } else {
                 log.info("URL 중복 발견 기존 공고 반환: ID{}", jobPost.getId());
 
@@ -94,33 +104,54 @@ public class JobPostingAnalysisService {
             }
         }
 
-        AiJobAnalysisRequest aiRequest = AiJobAnalysisRequest.builder()
-                .url(url)
-                .build();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없습니다."));
 
-        AiJobAnalysisResponse aiData = aiServiceClient.analyzeJob(aiRequest);
-        log.info("AI 분석 데이터: {}", aiData);
-        if (aiData.isExisting() && aiData.getJobPostingId() != null) {
-            JobPost existingPost = jobPostRepository.findByIdAndDeletedAtIsNull(aiData.getJobPostingId())
-                    .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL_ERROR, "AI가 식별한 기존 공고를 찾을 수 없습니다."));
+        Optional<AiEvalJob> activeJob = aiEvalJobRepository.findFirstBySourceUrlAndStatusInOrderByIdDesc(
+                normalizedUrl, List.of(AiJobStatus.PENDING, AiJobStatus.PROCESSING));
 
-            JobMaster jobMaster = existingPost.getJobMaster();
-
+        if (activeJob.isPresent()) {
+            log.info("이미 분석 진행 중인 URL: {}", normalizedUrl);
             return JobAnalysisResultResponse.builder()
-                    .jobMasterId(jobMaster.getId())
-                    .jobPostingId(existingPost.getId())
-                    .isExisting(true)
-                    .companyName(jobMaster.getCompany().getName())
-                    .jobTitle(existingPost.getRawJobTitle())
-                    .mainTasks(jobMaster.getMainTasks())
-                    .skills(jobMaster.getJobMasterSkills().stream()
-                            .map(jms -> jms.getSkill().getName())
-                            .toList())
-                    .aiSummary(jobMaster.getAiSummary())
-                    .startDate(jobMaster.getStartDate())
-                    .status(jobMaster.getStatus().name())
+                    .isProcessing(true)
+                    .isAlreadyProcessing(true)
+                    .evalJobId(activeJob.get().getId())
+                    .isExisting(false)
                     .build();
         }
+
+        AiEvalJob aiEvalJob = AiEvalJob.builder()
+                .requestedBy(user)
+                .analysisType(AnalysisType.JOBPOSTING)
+                .status(AiJobStatus.PENDING)
+                .sourceUrl(normalizedUrl)
+                .build();
+        aiEvalJobRepository.save(aiEvalJob);
+
+        eventPublisher.publishEvent(new AiJobPostingAnalysisCreateEvent(aiEvalJob.getId(), userId));
+
+        return JobAnalysisResultResponse.builder()
+                .isProcessing(true)
+                .isAlreadyProcessing(false)
+                .evalJobId(aiEvalJob.getId())
+                .isExisting(false)
+                .build();
+    }
+
+    @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "jobPostings", allEntries = true),
+            @CacheEvict(value = "jobDetail", key = "#result", condition = "#result != null")
+    })
+    public Long saveAnalysisResult(Long evalJobId, AiJobAnalysisResponse aiData) {
+        AiEvalJob aiEvalJob = aiEvalJobRepository.findById(evalJobId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "분석 작업을 찾을 수 없습니다."));
+
+        String url = aiEvalJob.getSourceUrl();
+        String normalizedUrl = normalizeUrl(url);
+        String sourceUrlHash = generateHash(normalizedUrl);
+
+        log.info("AI 분석 결과 수신 및 저장 시작: {}", url);
 
         String sourceDomain = extractDomain(normalizedUrl);
         Company company = resolveCompany(aiData.getCompanyName(), null, sourceDomain);
@@ -132,104 +163,87 @@ public class JobPostingAnalysisService {
         String fingerprintHash = generateFingerprint(company.getName(), aiData.getJobTitle(), endDateStr);
 
         try {
-            return createNewJobEntry(normalizedUrl, sourceUrlHash, fingerprintHash, company, aiData, userId);
+            JobAnalysisResultResponse result = createNewJobEntry(normalizedUrl, sourceUrlHash, fingerprintHash, company, aiData, aiEvalJob.getRequestedBy().getUserId());
+            return result.getJobMasterId();
         } catch (DataIntegrityViolationException e) {
-            log.warn("동시성 충돌 발생. 기존 공고 재조회 시도.");
+            log.warn("콜백 저장 중 동시성 충돌 발생 (무시 가능): {}", url);
+            return null;
+        }
+    }
 
-            JobPost conflictedPost = jobPostRepository.findBySourceUrlHashAndDeletedAtIsNull(sourceUrlHash)
-                    .orElseThrow(() -> new ApiException(
-                            ErrorCode.INTERNAL_ERROR,
-                            "동시성 충돌이 발생했으나 데이터를 찾을 수 없습니다."));
 
-            return JobAnalysisResultResponse.builder()
-                    .jobMasterId(conflictedPost.getJobMaster().getId())
-                    .jobPostingId(conflictedPost.getId())
-                    .isExisting(true)
+    @Transactional
+    public JobAnalysisResultResponse createNewJobEntry(String url, String urlHash, String fingerprint, Company company,
+                                                    AiJobAnalysisResponse aiData, Long userId) {
+    LocalDate startDate = null;
+    LocalDate endDate = null;
+    if (aiData.getRecruitmentPeriod() != null) {
+        startDate = parseDate(aiData.getRecruitmentPeriod().getStartDate());
+        endDate = parseDate(aiData.getRecruitmentPeriod().getEndDate());
+    }
+    List<EvaluationCriteria> criteriaList = null;
+    if (aiData.getEvaluationCriteria() != null) {
+        criteriaList = new java.util.ArrayList<>();
+        for (AiJobAnalysisResponse.EvaluationCriteria c : aiData.getEvaluationCriteria()) {
+            criteriaList.add(new EvaluationCriteria(c.getName(), c.getDescription()));
+        }
+    }
+    JobMaster jobMaster = JobMaster.builder()
+            .company(company)
+            .jobTitle(aiData.getJobTitle().trim())
+            .mainTasks(aiData.getMainResponsibilities())
+            .aiSummary(aiData.getAiSummary())
+            .evaluationCriteria(criteriaList)
+            .startDate(startDate)
+            .endDate(endDate)
+            .status(determineStatus(endDate))
+            .build();
+    JobPost jobPost = JobPost.builder()
+            .jobMaster(jobMaster)
+            .aiJobId(aiData.getJobPostingId())
+            .company(company)
+            .createdBy(userId)
+            .sourceType(JobSourceType.USER)
+            .sourceUrl(url)
+            .sourceUrlHash(urlHash)
+            .fingerprintHash(fingerprint)
+            .rawCompanyName(aiData.getCompanyName())
+            .rawJobTitle(aiData.getJobTitle())
+            .mainTasks(aiData.getMainResponsibilities())
+            .startDate(startDate)
+            .endDate(endDate)
+            .recruitmentStatus(determineRecruitmentStatus(startDate, endDate))
+            .registrationStatus(RegistrationStatus.DRAFT)
+            .build();
+    jobMaster.getJobPosts().add(jobPost);
+    if (aiData.getRequiredSkills() != null) {
+        for (String skillName : aiData.getRequiredSkills()) {
+            Skill skill = resolveSkill(skillName);
+            JobMasterSkill jobMasterSkill = JobMasterSkill.builder()
+                    .id(new JobMasterSkillId(null, skill.getId()))
+                    .jobMaster(jobMaster)
+                    .skill(skill)
                     .build();
+            jobMaster.getJobMasterSkills().add(jobMasterSkill);
         }
     }
-
-    private JobAnalysisResultResponse createNewJobEntry(String url, String urlHash, String fingerprint, Company company,
-            AiJobAnalysisResponse aiData, Long userId) {
-        LocalDate startDate = null;
-        LocalDate endDate = null;
-
-        if (aiData.getRecruitmentPeriod() != null) {
-            startDate = parseDate(aiData.getRecruitmentPeriod().getStartDate());
-            endDate = parseDate(aiData.getRecruitmentPeriod().getEndDate());
-        }
-
-        List<EvaluationCriteria> criteriaList = null;
-        if (aiData.getEvaluationCriteria() != null) {
-            criteriaList = new java.util.ArrayList<>();
-            for (AiJobAnalysisResponse.EvaluationCriteria c : aiData.getEvaluationCriteria()) {
-                criteriaList.add(new EvaluationCriteria(c.getName(), c.getDescription()));
-            }
-        }
-
-        JobMaster jobMaster = JobMaster.builder()
-                .company(company)
-                .jobTitle(aiData.getJobTitle().trim())
-                .mainTasks(aiData.getMainResponsibilities())
-                .aiSummary(aiData.getAiSummary())
-                .evaluationCriteria(criteriaList)
-                .startDate(startDate)
-                .endDate(endDate)
-                .status(determineStatus(endDate))
-                .build();
-
-        JobPost jobPost = JobPost.builder()
-                .jobMaster(jobMaster)
-                .aiJobId(aiData.getJobPostingId())
-                .company(company)
-                .createdBy(userId)
-                .sourceType(JobSourceType.USER)
-                .sourceUrl(url)
-                .sourceUrlHash(urlHash)
-                .fingerprintHash(fingerprint)
-                .rawCompanyName(aiData.getCompanyName())
-                .rawJobTitle(aiData.getJobTitle())
-                .mainTasks(aiData.getMainResponsibilities())
-                .startDate(startDate)
-                .endDate(endDate)
-                .recruitmentStatus(determineRecruitmentStatus(startDate, endDate))
-                .registrationStatus(RegistrationStatus.DRAFT)
-                .build();
-
-        jobMaster.getJobPosts().add(jobPost);
-
-        if (aiData.getRequiredSkills() != null) {
-            for (String skillName : aiData.getRequiredSkills()) {
-                Skill skill = resolveSkill(skillName);
-
-                JobMasterSkill jobMasterSkill = JobMasterSkill.builder()
-                        .id(new JobMasterSkillId(null, skill.getId()))
-                        .jobMaster(jobMaster)
-                        .skill(skill)
-                        .build();
-
-                jobMaster.getJobMasterSkills().add(jobMasterSkill);
-            }
-        }
-
-        JobMaster savedJobMaster = jobMasterRepository.save(jobMaster);
-        JobPost savedJobPost = savedJobMaster.getJobPosts().get(0);
-
-        return JobAnalysisResultResponse.builder()
-                .jobMasterId(savedJobMaster.getId())
-                .jobPostingId(savedJobPost.getId())
-                .isExisting(false)
-                .companyName(company.getName())
-                .jobTitle(savedJobMaster.getJobTitle())
-                .mainTasks(savedJobMaster.getMainTasks())
-                .skills(savedJobMaster.getJobMasterSkills().stream()
-                        .map(jms -> jms.getSkill().getName())
-                        .toList())
-                .aiSummary(savedJobMaster.getAiSummary())
-                .startDate(savedJobMaster.getStartDate())
-                .status(savedJobMaster.getStatus().name())
-                .build();
-    }
+    JobMaster savedJobMaster = jobMasterRepository.save(jobMaster);
+    JobPost savedJobPost = savedJobMaster.getJobPosts().get(0);
+    return JobAnalysisResultResponse.builder()
+            .jobMasterId(savedJobMaster.getId())
+            .jobPostingId(savedJobPost.getId())
+            .isExisting(false)
+            .companyName(company.getName())
+            .jobTitle(savedJobMaster.getJobTitle())
+            .mainTasks(savedJobMaster.getMainTasks())
+            .skills(savedJobMaster.getJobMasterSkills().stream()
+                    .map(jms -> jms.getSkill().getName())
+                    .toList())
+            .aiSummary(savedJobMaster.getAiSummary())
+            .startDate(savedJobMaster.getStartDate())
+            .status(savedJobMaster.getStatus().name())
+            .build();
+}
 
     private String normalizeCompanyName(String rawName) {
         if (rawName == null) {

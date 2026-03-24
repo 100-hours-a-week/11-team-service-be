@@ -1,6 +1,7 @@
 package com.thunder11.scuad.jobposting.service;
 
 import java.util.Optional;
+import java.util.List;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,8 @@ import com.thunder11.scuad.common.exception.ApiException;
 import com.thunder11.scuad.common.exception.ErrorCode;
 import com.thunder11.scuad.jobposting.domain.AiApplicantEvaluation;
 import com.thunder11.scuad.jobposting.domain.AiEvalJob;
+import com.thunder11.scuad.jobposting.domain.AiPortfolioAnalysis;
+import com.thunder11.scuad.jobposting.domain.AiResumeAnalysis;
 import com.thunder11.scuad.jobposting.domain.JobApplication;
 import com.thunder11.scuad.jobposting.domain.type.AiJobStatus;
 import com.thunder11.scuad.jobposting.domain.type.AnalysisType;
@@ -56,6 +59,7 @@ public class JopApplicationAnalysisService {
             throw new ApiException(ErrorCode.FORBIDDEN, "본인의 분석 결과만 조회할 수 있습니다.");
         }
 
+        boolean isProcessing = false;
         AiEvalJob recentJob = aiEvalJobRepository
                 .findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(applicationId, AnalysisType.EVALUATION)
                 .orElse(null);
@@ -64,7 +68,8 @@ public class JopApplicationAnalysisService {
             switch (recentJob.getStatus()) {
                 case PENDING:
                 case PROCESSING:
-                    throw new ApiException(ErrorCode.ACCEPTED, "AI가 현재 이력서를 분석 중입니다.");
+                    isProcessing = true;
+                    break;
                 case FAILED:
                     throw new ApiException(ErrorCode.INTERNAL_ERROR, "분석 중 오류가 발생했습니다: " + recentJob.getErrorMessage());
                 case SUCCEEDED:
@@ -76,14 +81,37 @@ public class JopApplicationAnalysisService {
                 .findByJobApplicationId(applicationId);
 
         if (evaluationIsReady.isPresent()) {
-            return AiEvaluationResultResponse.from(evaluationIsReady.get());
+            AiApplicantEvaluation eval = evaluationIsReady.get();
+            return AiEvaluationResultResponse.builder()
+                .evaluationId(eval.getId())
+                .jobApplicationId(eval.getJobApplication().getId())
+                .overallScore(eval.getOverallScore())
+                .oneLineReview(eval.getOneLineReview())
+                .feedbackDetail(eval.getFeedbackDetail())
+                .comparisonScores(eval.getComparisonScores())
+                .analyzedAt(eval.getCreatedAt())
+                .status(isProcessing ? "PROCESSING" : "COMPLETED")
+                .isProcessing(isProcessing)
+                .build();
+        }
+
+        if (isProcessing) {
+            return AiEvaluationResultResponse.builder()
+                    .jobApplicationId(applicationId)
+                    .status("PROCESSING")
+                    .isProcessing(true)
+                    .build();
         }
 
         if (recentJob != null && recentJob.getStatus() == AiJobStatus.SUCCEEDED) {
             throw new ApiException(ErrorCode.INTERNAL_ERROR, "분석은 완료되었으나 결과 데이터가 없습니다.");
         }
 
-        throw new ApiException(ErrorCode.ACCEPTED, "AI 분석 대기 중입니다.");
+        return AiEvaluationResultResponse.builder()
+                .jobApplicationId(applicationId)
+                .status("PENDING")
+                .isProcessing(false)
+                .build();
     }
 
     @Transactional(readOnly = true)
@@ -94,20 +122,45 @@ public class JopApplicationAnalysisService {
         if (!jobApplication.getUser().getUserId().equals(userId)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "본인의 분석 결과만 조회할 수 있습니다.");
         }
-        AiEvalJob recentJob = aiEvalJobRepository
-                .findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(
-                        applicationId, AnalysisType.RESUME)
+
+        boolean isProcessing = false;
+        // 1. 문서 전용 작업 확인
+        AiEvalJob recentDocJob = aiEvalJobRepository
+                .findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(applicationId, AnalysisType.RESUME)
                 .orElse(null);
-        if (recentJob != null) {
-            switch (recentJob.getStatus()) {
-                case PENDING, PROCESSING -> throw new ApiException(ErrorCode.ACCEPTED, "AI가 이력서를 분석 중입니다.");
-                case FAILED -> throw new ApiException(ErrorCode.INTERNAL_ERROR, "분석 중 오류: " + recentJob.getErrorMessage());
-                case SUCCEEDED -> {}
+        if (recentDocJob != null && (recentDocJob.getStatus() == AiJobStatus.PENDING || recentDocJob.getStatus() == AiJobStatus.PROCESSING)) {
+            isProcessing = true;
+        }
+
+        // 2. 종합 평가 작업 확인 (종합 평가도 이력서를 분석함)
+        if (!isProcessing) {
+            AiEvalJob recentEvalJob = aiEvalJobRepository
+                    .findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(applicationId, AnalysisType.EVALUATION)
+                    .orElse(null);
+            if (recentEvalJob != null && (recentEvalJob.getStatus() == AiJobStatus.PENDING || recentEvalJob.getStatus() == AiJobStatus.PROCESSING)) {
+                isProcessing = true;
             }
         }
-        return aiResumeAnalysisRepository.findByJobApplicationId(applicationId)
-                .map(AiResumeAnalysisResponse::from)
-                .orElseThrow(() -> new ApiException(ErrorCode.ACCEPTED, "AI 이력서 분석 대기 중입니다."));
+
+        Optional<AiResumeAnalysis> result = aiResumeAnalysisRepository.findByJobApplicationId(applicationId);
+
+        if (result.isPresent()) {
+            AiResumeAnalysis entity = result.get();
+            return AiResumeAnalysisResponse.builder()
+                    .analysisId(entity.getId())
+                    .aiAnalysisReport(entity.getAiAnalysisReport())
+                    .jobFitScore(entity.getJobFitScore())
+                    .experienceClarityScore(entity.getExperienceClarityScore())
+                    .readabilityScore(entity.getReadabilityScore())
+                    .isProcessing(isProcessing)
+                    .build();
+        }
+
+        if (isProcessing) {
+            throw new ApiException(ErrorCode.ACCEPTED, "AI가 이력서를 분석 중입니다.");
+        }
+
+        throw new ApiException(ErrorCode.NOT_FOUND, "이력서 분석 결과가 없습니다.");
     }
 
     @Transactional(readOnly = true)
@@ -119,21 +172,50 @@ public class JopApplicationAnalysisService {
             throw new ApiException(ErrorCode.FORBIDDEN, "본인의 분석 결과만 조회할 수 있습니다.");
         }
 
-        AiEvalJob recentJob = aiEvalJobRepository
+        boolean isProcessing = false;
+        // 1. 문서 전용 작업 확인
+        AiEvalJob recentDocJob = aiEvalJobRepository
                 .findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(applicationId, AnalysisType.PORTFOLIO)
                 .orElse(null);
+        if (recentDocJob != null && (recentDocJob.getStatus() == AiJobStatus.PENDING || recentDocJob.getStatus() == AiJobStatus.PROCESSING)) {
+            isProcessing = true;
+        }
 
-        if (recentJob != null) {
-            switch (recentJob.getStatus()) {
-                case PENDING, PROCESSING -> throw new ApiException(ErrorCode.ACCEPTED, "AI가 포트폴리오 분석 중입니다.");
-                case FAILED -> throw new ApiException(ErrorCode.INTERNAL_ERROR, "분석 중 오류: " + recentJob.getErrorMessage());
-                case SUCCEEDED ->  {}
+        // 2. 종합 평가 작업 확인 (종합 평가도 포트폴리오를 분석함)
+        if (!isProcessing) {
+            AiEvalJob recentEvalJob = aiEvalJobRepository
+                    .findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(applicationId, AnalysisType.EVALUATION)
+                    .orElse(null);
+            if (recentEvalJob != null && (recentEvalJob.getStatus() == AiJobStatus.PENDING || recentEvalJob.getStatus() == AiJobStatus.PROCESSING)) {
+                isProcessing = true;
             }
         }
 
-        return aiPortfolioAnalysisRepository.findByJobApplicationId(applicationId)
-                .map(AiPortfolioAnalysisResponse::from)
-                .orElseThrow(() -> new ApiException(ErrorCode.ACCEPTED, "AI 포트폴리오 분석 대기중입니다."));
+        Optional<AiPortfolioAnalysis> result = aiPortfolioAnalysisRepository.findByJobApplicationId(applicationId);
+
+        if (result.isPresent()) {
+            AiPortfolioAnalysis entity = result.get();
+            return AiPortfolioAnalysisResponse.builder()
+                    .analysisId(entity.getId())
+                    .aiAnalysisReport(entity.getAiAnalysisReport())
+                    .problemSolvingScore(entity.getProblemSolvingScore())
+                    .contributionClarityScore(entity.getContributionClarityScore())
+                    .technicalDepthScore(entity.getTechnicalDepthScore())
+                    .isProcessing(isProcessing)
+                    .build();
+        }
+
+        if (isProcessing) {
+            throw new ApiException(ErrorCode.ACCEPTED, "AI가 포트폴리오 분석 중입니다.");
+        }
+
+        throw new ApiException(ErrorCode.NOT_FOUND, "포트폴리오 분석 결과가 없습니다.");
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isProcessing(Long applicationId) {
+        return aiEvalJobRepository.findFirstByJobApplicationIdAndStatusInOrderByIdDesc(
+                applicationId, List.of(AiJobStatus.PENDING, AiJobStatus.PROCESSING)).isPresent();
     }
 
     @Transactional
@@ -154,28 +236,30 @@ public class JopApplicationAnalysisService {
 
         boolean hasResume = jobApplication.getApplicationDocuments() != null
                 && jobApplication.getApplicationDocuments().stream()
-                .anyMatch(d -> d.getDocType() == ApplicationDocumentType.RESUME);
-        if (!hasResume) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "이력서가 없습니다.");
+                        .anyMatch(d -> d.getDocType() == ApplicationDocumentType.RESUME);
+
+        if (analysisType == AnalysisType.RESUME || analysisType == AnalysisType.EVALUATION) {
+            if (!hasResume) {
+                throw new ApiException(ErrorCode.NOT_FOUND, "이력서가 없습니다.");
+            }
         }
 
-        if (analysisType == AnalysisType.ALL) {
-            boolean hasPortfolio = jobApplication.getApplicationDocuments().stream()
-                    .anyMatch(d -> d.getDocType() == ApplicationDocumentType.PORTFOLIO);
-
-            createJobOnlyWithPending(jobApplication, userId, AnalysisType.EVALUATION);
-            createJobOnlyWithPending(jobApplication, userId, AnalysisType.RESUME);
-            if(hasPortfolio) {
-                createJobOnlyWithPending(jobApplication, userId, AnalysisType.PORTFOLIO);
+        if (analysisType == AnalysisType.PORTFOLIO) {
+            boolean hasPortfolio = jobApplication.getApplicationDocuments() != null
+                    && jobApplication.getApplicationDocuments().stream()
+                            .anyMatch(d -> d.getDocType() == ApplicationDocumentType.PORTFOLIO);
+            if (!hasPortfolio) {
+                throw new ApiException(ErrorCode.NOT_FOUND, "포트폴리오가 없습니다.");
             }
-            eventPublisher.publishEvent(new AiAnalysisCreateEvent(userId, jobApplication.getJobMaster().getId(), AnalysisType.ALL));
-            return null;
         }
 
         aiEvalJobRepository.findFirstByJobApplicationIdAndAnalysisTypeOrderByIdDesc(applicationId, analysisType)
                 .ifPresent(aiEvalJob -> {
                     if (aiEvalJob.getStatus() == AiJobStatus.PROCESSING) {
-                        throw new ApiException(ErrorCode.CONFLICT, "이미 진행 중인 평가가 있습니다.");
+                        if (aiEvalJob.getCreatedAt().isBefore(java.time.LocalDateTime.now().minusMinutes(5))) {
+                            return;
+                        }
+                        throw new ApiException(ErrorCode.CONFLICT, "이미 분석이 진행 중입니다. 잠시만 기다려 주세요.");
                     }
                 });
         return createAndPublish(jobApplication, userId, analysisType);
@@ -193,21 +277,8 @@ public class JopApplicationAnalysisService {
         log.info("AiEvalJob 저장 완료: ID={}, ApplicationId={}, Status={}",
                 savedAiEvalJob.getId(), jobApplication.getId(), savedAiEvalJob.getStatus());
 
-        eventPublisher.publishEvent(new AiAnalysisCreateEvent(userId, jobApplication.getJobMaster().getId(), analysisType));
-
-        return savedAiEvalJob.getId();
-    }
-
-    private Long createJobOnlyWithPending(JobApplication jobApplication, Long userId, AnalysisType analysisType) {
-        AiEvalJob aiEvalJob = AiEvalJob.builder()
-                .jobApplication(jobApplication)
-                .requestedBy(jobApplication.getUser())
-                .analysisType(analysisType)
-                .status(AiJobStatus.PENDING)
-                .build();
-
-        AiEvalJob savedAiEvalJob = aiEvalJobRepository.save(aiEvalJob);
-        log.info("AI 평가 접수 완료(PENDING/이벤트 미발행): ID={}, Type={}", savedAiEvalJob.getId(), analysisType);
+        eventPublisher
+                .publishEvent(new AiAnalysisCreateEvent(userId, jobApplication.getJobMaster().getId(), analysisType));
 
         return savedAiEvalJob.getId();
     }
