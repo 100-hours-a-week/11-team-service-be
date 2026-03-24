@@ -47,13 +47,13 @@ spring:
       s3:
         bucket: ${AWS_S3_BUCKET:default-bucket}
 
-    flyway: 
-      enabled: true
-      baseline-on-migrate: false
-      out-of-order: true
-      baseline-version: 0
-      locations:
-        - classpath:db/migration
+  flyway: 
+    enabled: true
+    baseline-on-migrate: false
+    out-of-order: true
+    baseline-version: 0
+    locations:
+      - classpath:db/migration
 
   servlet:
     multipart:
